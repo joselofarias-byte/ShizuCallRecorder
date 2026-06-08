@@ -234,8 +234,11 @@ object AppLogger {
                 writer.flush()
 
                 if (file.exists()) {
-                    file.inputStream().use { inputStream ->
-                        inputStream.copyTo(outputStream)
+                    file.bufferedReader().useLines { lines ->
+                        lines.forEach { line ->
+                            val outputLine = if (isRedactionEnabled) redact(line) else line
+                            writer.println(outputLine)
+                        }
                     }
                 } else {
                     writer.println("[No logs found in internal storage]")
@@ -246,53 +249,63 @@ object AppLogger {
 
     /** Logs a Verbose level message and optionally its throwable trace. */
     fun v(tag: String, message: String, t: Throwable? = null) {
-        val finalMessage = if (isRedactionEnabled) redact(message) else message
-        if (t != null) Log.v(tag, finalMessage, t) else Log.v(tag, finalMessage)
-        logInternal("V", tag, finalMessage, t)
+        logInternal("V", tag, message, t)
     }
 
     /** Logs a Debug level message and optionally its throwable trace. */
     fun d(tag: String, message: String, t: Throwable? = null) {
-        val finalMessage = if (isRedactionEnabled) redact(message) else message
-        if (t != null) Log.d(tag, finalMessage, t) else Log.d(tag, finalMessage)
-        logInternal("D", tag, finalMessage, t)
+        logInternal("D", tag, message, t)
     }
 
     /** Logs an Info level message and optionally its throwable trace. */
     fun i(tag: String, message: String, t: Throwable? = null) {
-        val finalMessage = if (isRedactionEnabled) redact(message) else message
-        if (t != null) Log.i(tag, finalMessage, t) else Log.i(tag, finalMessage)
-        logInternal("I", tag, finalMessage, t)
+        logInternal("I", tag, message, t)
     }
 
     /** Logs a Warning level message and optionally its throwable trace. */
     fun w(tag: String, message: String, t: Throwable? = null) {
-        val finalMessage = if (isRedactionEnabled) redact(message) else message
-        if (t != null) Log.w(tag, finalMessage, t) else Log.w(tag, finalMessage)
-        logInternal("W", tag, finalMessage, t)
+        logInternal("W", tag, message, t)
     }
 
     /** Logs an Error level message and optionally its throwable trace. */
     fun e(tag: String, message: String, t: Throwable? = null) {
-        val finalMessage = if (isRedactionEnabled) redact(message) else message
-        if (t != null) Log.e(tag, finalMessage, t) else Log.e(tag, finalMessage)
-        logInternal("E", tag, finalMessage, t)
+        logInternal("E", tag, message, t)
     }
 
     /** Logs a "What a Terrible Failure" (assert) message and optionally its throwable trace. */
     fun wtf(tag: String, message: String, t: Throwable? = null) {
-        val finalMessage = if (isRedactionEnabled) redact(message) else message
-        if (t != null) Log.wtf(tag, finalMessage, t) else Log.wtf(tag, finalMessage)
-        logInternal("WTF", tag, finalMessage, t)
+        logInternal("WTF", tag, message, t)
+    }
+
+    /**
+     * Internal helper to dispatch logs to Logcat with consistent redaction.
+     */
+    private fun logToLogcat(level: String, tag: String, message: String) {
+        when (level) {
+            "V" -> Log.v(tag, message)
+            "D" -> Log.d(tag, message)
+            "I" -> Log.i(tag, message)
+            "W" -> Log.w(tag, message)
+            "E" -> Log.e(tag, message)
+            "WTF" -> Log.wtf(tag, message)
+        }
     }
 
     /**
      * Prepares a log message by enriching it with more detailed metadata (timestamp, log level, tag) and then
      * forwarding it to the channel.
      *
-     * **WARNING**: YOU MUST ENSURE THE MESSAGE IS [redact] BEFORE CALLING THIS METHOD TO TRY TO AVOID LEAKING SENSITIVE DATA INTO THE LOG FILE.
+     * This method centralizes redaction (message + stack trace) before any output occurs.
      */
     private fun logInternal(level: String, tag: String, message: String, t: Throwable?) {
+        val redactedMessage = if (isRedactionEnabled) redact(message) else message
+        val stackTrace = t?.let { Log.getStackTraceString(it) }
+        val redactedStackTrace = if (isRedactionEnabled && stackTrace != null) redact(stackTrace) else stackTrace
+
+        // Log to Logcat (redacted). We pass null as Throwable to avoid Logcat printing the unredacted trace automatically.
+        val logcatMessage = redactedMessage + (redactedStackTrace?.let { "\n$it" } ?: "")
+        logToLogcat(level, tag, logcatMessage)
+
         // Handle remote process execution securely
         if (isRemoteProcess) {
             if (remoteCallback == null) {
@@ -300,9 +313,13 @@ object AppLogger {
                 return
             }
             try {
-                remoteCallback?.onLogEvent(level, tag, message, t?.let { Log.getStackTraceString(it) })
+                // Forward redacted message and redacted stack trace separately to preserve the contract
+                remoteCallback?.onLogEvent(level, tag, redactedMessage, redactedStackTrace)
             } catch (e: Exception) {
-                Log.v(TAG, "Failed to send log event via IPC callback, likely due to remote process death. Message was: $message", e)
+                val errorMsg = "Failed to send log event via IPC callback. Original redacted message was: $redactedMessage"
+                val errorTrace = Log.getStackTraceString(e)
+                val redactedErrorTrace = if (isRedactionEnabled) redact(errorTrace) else errorTrace
+                Log.v(TAG, "$errorMsg\n$redactedErrorTrace")
             }
             // In remote mode, we rely entirely on the main process to handle log persistence. We do not write anything locally.
             return
@@ -311,9 +328,7 @@ object AppLogger {
         if (prefs?.isLoggingEnabled() != true) return
 
         val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
-        val fullMessage = message + (t?.let { "\n${Log.getStackTraceString(it)}" } ?: "")
-
-        val formattedLine = "$time [$level] $tag: $fullMessage"
+        val formattedLine = "$time [$level] $tag: $logcatMessage"
         channel.trySend(formattedLine)
     }
 

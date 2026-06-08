@@ -73,6 +73,10 @@ class AppPreferences(context: Context) {
         const val SHIZUKU_START_ON_RECORD = false
         const val SHIZUKU_KEEP_ALIVE = false
         const val SHIZUKU_AUTH_KEY = ""
+
+        // --- Validation Ranges ---
+        const val AUDIO_BITRATE_MIN = 8_000
+        const val AUDIO_BITRATE_MAX = 128_000
     }
 
     /**
@@ -142,12 +146,11 @@ class AppPreferences(context: Context) {
             /**
              * Parses a key string back into an enum constant.
              *
-             * @throws IllegalArgumentException if no matching entry is found.
              * @param key The string stored in SharedPreferences.
-             * @return The matching [IgnoreContactsMode], or throws an error if unrecognized.
+             * @return The matching [IgnoreContactsMode], or [NONE] if unrecognized.
              */
             fun fromKey(key: String?): IgnoreContactsMode {
-                return entries.firstOrNull { it.key == key } ?: throw IllegalArgumentException("Unknown IgnoreContactsMode key: $key")
+                return entries.firstOrNull { it.key == key } ?: NONE
             }
         }
     }
@@ -163,11 +166,10 @@ class AppPreferences(context: Context) {
             /**
              * Parses a key string back into an enum constant.
              *
-             * @throws IllegalArgumentException if no matching entry is found.
              * @param key The string stored in SharedPreferences.
-             * @return The matching [ThemeMode], or throws an error if unrecognized.
+             * @return The matching [ThemeMode], or [SYSTEM] if unrecognized.
              */
-            fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: throw IllegalArgumentException("Unknown ThemeMode key: $key")
+            fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: SYSTEM
         }
     }
 
@@ -308,10 +310,24 @@ class AppPreferences(context: Context) {
     fun setAudioCodec(codec: String) = setString(Key.AUDIO_CODEC, codec)
 
     /** Gets the configured audio bitrate. */
-    fun getAudioBitRate() = getInt(Key.AUDIO_BITRATE, DefaultsValue.AUDIO_BITRATE)
+    fun getAudioBitRate(): Int {
+        val bitRate = getInt(Key.AUDIO_BITRATE, DefaultsValue.AUDIO_BITRATE)
+        return if (bitRate in DefaultsValue.AUDIO_BITRATE_MIN..DefaultsValue.AUDIO_BITRATE_MAX) {
+            bitRate
+        } else {
+            DefaultsValue.AUDIO_BITRATE
+        }
+    }
 
     /** Sets the configured audio bitrate. */
-    fun setAudioBitRate(bitRate: Int) = setInt(Key.AUDIO_BITRATE, bitRate)
+    fun setAudioBitRate(bitRate: Int) {
+        val valueToSave = if (bitRate in DefaultsValue.AUDIO_BITRATE_MIN..DefaultsValue.AUDIO_BITRATE_MAX) {
+            bitRate
+        } else {
+            DefaultsValue.AUDIO_BITRATE
+        }
+        setInt(Key.AUDIO_BITRATE, valueToSave)
+    }
 
     // -------- File Naming --------
 

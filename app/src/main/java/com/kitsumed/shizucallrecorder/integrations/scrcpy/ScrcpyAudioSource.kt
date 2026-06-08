@@ -201,11 +201,10 @@ enum class ScrcpyAudioSource(
         /**
          * Returns the [ScrcpyAudioSource] whose [cliKey] matches [key].
          *
-         * @throws IllegalArgumentException if no matching entry is found.
          * @param key The raw audio-source key stored in preferences.
-         * @return The matching [ScrcpyAudioSource].
+         * @return The matching [ScrcpyAudioSource], or [VOICE_CALL] if no match is found.
          */
         fun fromKey(key: String): ScrcpyAudioSource =
-            entries.firstOrNull { it.cliKey == key } ?: throw IllegalArgumentException("Unknown ScrcpyAudioSource key: $key")
+            entries.firstOrNull { it.cliKey == key } ?: VOICE_CALL
     }
 }

@@ -76,12 +76,11 @@ enum class ScrcpyAudioCodec(
         /**
          * Returns the [ScrcpyAudioCodec] whose [cliKey] matches [key].
          *
-         * @throws IllegalArgumentException if no matching entry is found.
          * @param key The raw codec key string stored in preferences (e.g. "opus" or "aac").
-         * @return The matching [ScrcpyAudioCodec], or throws an error if no match is found.
+         * @return The matching [ScrcpyAudioCodec], or [OPUS] if no match is found.
          */
         fun fromKey(key: String): ScrcpyAudioCodec =
-            entries.firstOrNull { it.cliKey == key } ?: throw IllegalArgumentException("Unknown ScrcpyAudioCodec key: $key")
+            entries.firstOrNull { it.cliKey == key } ?: OPUS
 
         /**
          * Returns the [ScrcpyAudioCodec] whose [codecFourCC] matches [fourCC].

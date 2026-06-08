@@ -50,7 +50,11 @@ class PhoneStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
         // EXTRA_STATE is one of "IDLE", "RINGING", or "OFFHOOK".
-        val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: throw IllegalArgumentException("Missing EXTRA_STATE in phone state change intent. How is this possible??")
+        val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+        if (state == null) {
+            AppLogger.w(TAG, "Missing EXTRA_STATE in phone state change intent. Ignoring broadcast.")
+            return
+        }
 
         // EXTRA_INCOMING_NUMBER is set for both incoming and outgoing calls (I know the naming is confusing), but there is a nuance.
         // See this class KDoc comment "Double Broadcast" for more information on this. The first broadcast is always null.
