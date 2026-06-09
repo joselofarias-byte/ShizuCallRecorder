@@ -153,9 +153,9 @@ class ScrcpyAudioMuxer(
         } else {
             val gapNanos = nowNanos - lastPacketWallClockNanos
             if (gapNanos > GAP_THRESHOLD_NANOS) {
-                val ignoredNanos = gapNanos - GAP_SLACK_NANOS
-                totalIgnoredGapNanos += ignoredNanos
-                AppLogger.d(TAG, "Detected huge gap silence/pause of ${gapNanos / 1_000_000} ms. Squashing ${ignoredNanos / 1_000_000} ms.")
+                AppLogger.d(TAG, "Gap detected but preserved. Gap was ${gapNanos / 1_000_000} ms.")
+                // For call recordings, we MUST preserve silence gaps to maintain the correct overall duration.
+                // We no longer add to totalIgnoredGapNanos here.
             }
             lastPacketWallClockNanos = nowNanos
         }
@@ -188,6 +188,10 @@ class ScrcpyAudioMuxer(
      */
     override fun close() {
         if (isMuxerStarted) {
+            val wallClockDurationMs = if (firstPacketTimeNanos != -1L) (System.nanoTime() - firstPacketTimeNanos) / 1_000_000 else 0
+            val ptsDurationMs = if (lastWrittenPtsUs != -1L) lastWrittenPtsUs / 1000 else 0
+            AppLogger.i(TAG, "Muxer closing. Estimated wall clock duration: ${wallClockDurationMs}ms, PTS duration: ${ptsDurationMs}ms")
+
             AppLogger.d(TAG, "Finalising muxer for '$outputDisplayPath'")
             runCatching { muxer?.stop() }.onFailure { e ->
                 AppLogger.e(TAG, "Muxer stop failed (file may be incomplete): ${e.message}")

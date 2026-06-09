@@ -151,6 +151,13 @@ class CallSessionManager private constructor(context: Context) {
      */
     private var sessionJob: Job? = null
 
+    /**
+     * EXPERIMENTAL: Holds a reference to a debounce job for the IDLE state.
+     * Some OS (like MagicOS) send a false IDLE broadcast around 30 seconds.
+     */
+    private var idleDebounceJob: Job? = null
+    private val IDLE_DEBOUNCE_DELAY_MS = 5000L
+
 
     init {
         AppLogger.d(TAG, "CallSessionManager initialised")
@@ -192,17 +199,32 @@ class CallSessionManager private constructor(context: Context) {
 
         // 1. Handle IDLE (Stop, no longer in a call)
         if (receivedCallState == TelephonyManager.CALL_STATE_IDLE) {
+            AppLogger.d(TAG, "CallSessionManager received IDLE (Call Ended).")
             sessionJob?.cancel() // Cancel pending verification window or ongoing session if any
-            // Only trigger stop logic if we were previously in an active session. Prevents redundant stop commands on possible repeated IDLE broadcasts.
+
+            // EXPERIMENTAL IDLE DEBOUNCE
             if (session.isSessionActive) {
-                AppLogger.d(TAG, "Phone state is now idle (call ended). Sending stop INTENT for ${session.currentMetadata?.direction} call to RecordingForegroundService.")
-                sendServiceCommand(RecordingForegroundService.ACTION_STOP_RECORDING)
-                session.clear()
+                AppLogger.d(TAG, "Received IDLE. Starting debounce of ${IDLE_DEBOUNCE_DELAY_MS}ms to confirm call end.")
+                idleDebounceJob?.cancel()
+                idleDebounceJob = managerScope.launch {
+                    delay(IDLE_DEBOUNCE_DELAY_MS)
+                    AppLogger.i(TAG, "IDLE confirmed after debounce; stopping recording.")
+                    AppLogger.d(TAG, "Phone state is now idle (call ended). Sending stop INTENT for ${session.currentMetadata?.direction} call to RecordingForegroundService.")
+                    sendServiceCommand(RecordingForegroundService.ACTION_STOP_RECORDING)
+                    session.clear()
+                }
             }
             return
         }
 
         // 2. Launch the Coroutine for RINGING or OFFHOOK
+
+        // EXPERIMENTAL: Cancel IDLE debounce if a new active state arrives
+        if (idleDebounceJob?.isActive == true) {
+            AppLogger.w(TAG, "False IDLE detected; active state resumed; cancelling delayed stop.")
+            idleDebounceJob?.cancel()
+        }
+
         // Canceling the previous job for the verification window logic
         sessionJob?.cancel()
         sessionJob = managerScope.launch {

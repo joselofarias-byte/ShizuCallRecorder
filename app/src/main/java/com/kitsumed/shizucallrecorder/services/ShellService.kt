@@ -271,59 +271,52 @@ class ShellService : IShellService.Stub {
      */
     override fun stopRecording() {
         // compareAndSet(true, false): atomically checks that we ARE recording and clears the flag.
-        // Returns false (and skips the body) if we were already stopped, preventing double-free.
-        if (!isRecordingActive.compareAndSet(true, false)) {
-            AppLogger.w(TAG, "stopRecording() called but no active session - skipping redundant cleanup")
-            return
+        // We still use it to log that we are stopping a formal session, but we do NOT return early anymore.
+        if (isRecordingActive.compareAndSet(true, false)) {
+            AppLogger.i(TAG, "Stopping active recording session...")
+        } else {
+            AppLogger.d(TAG, "stopRecording() called: ensuring all background resources are released...")
         }
 
-        AppLogger.i(TAG,"Stopping scrcpy-server process...")
-        runCatching { scrcpyProcess?.destroy() }
-
-        // Give the server up to PROCESS_STOP_GRACE_PERIOD_SEC to send its final audio bytes to the server socket.
-        // waitFor() blocks until the process exits or the timeout elapses.
-        try {
-            scrcpyProcess?.waitFor(PROCESS_STOP_GRACE_PERIOD_SEC, TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            AppLogger.w(TAG, "Interrupted while waiting for scrcpy-server exit: ${e.message}")
-        }
-
-        // Wait for the relay job to copy remaining socket data to the pipe for downstream app (Time-bounded).
-        AppLogger.d(TAG,"Waiting for relay coroutine to finish copying late bytes...")
+        AppLogger.d(TAG, "Cleaning up scrcpy-server process...")
         runCatching {
-            kotlinx.coroutines.runBlocking {
-                // Time-bounded wait to strictly prevent any infinite loop if EOF is never reached or take too long
-                kotlinx.coroutines.withTimeoutOrNull(2000L) { // 2s timeout
-                    audioPipeRelayJob?.join()
+            scrcpyProcess?.let { process ->
+                process.destroy()
+                // Give the server up to PROCESS_STOP_GRACE_PERIOD_SEC to send its final audio bytes.
+                process.waitFor(PROCESS_STOP_GRACE_PERIOD_SEC, TimeUnit.SECONDS)
+            }
+        }
+
+        // Wait for the relay job to copy remaining socket data to the pipe (Time-bounded).
+        if (audioPipeRelayJob?.isActive == true) {
+            AppLogger.d(TAG, "Waiting for relay coroutine to finish copying late bytes...")
+            runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(2000L) {
+                        audioPipeRelayJob?.join()
+                    }
                 }
             }
         }
 
-        AppLogger.d(TAG,"Cancelling all jobs running from the shell coroutine scope...")
-        // This stops the execution of all of our coroutines tasks/threads.
+        AppLogger.d(TAG, "Cancelling shell coroutine scope...")
         runCatching { shellScope?.cancel() }
 
-        // Close in reverse-allocation order. The client socket connection should already have by closed
-        // by scrcpy-server when it was requested to close itself, but we close it again here to force its closure if it's still open.
-        AppLogger.d(TAG,"Ensuring client socket connection is closed...")
+        // Close connections in reverse allocation order.
+        AppLogger.d(TAG, "Closing sockets and pipes...")
         runCatching { clientConnection?.close() }
-
-        AppLogger.d(TAG,"Closing server socket...")
         runCatching { serverSocket?.close() }
-
-        // Close the pipe write-end AFTER the process has had a chance to write final bytes.
-        AppLogger.d(TAG,"Closing audio pipe write-end...")
         runCatching { audioWriteEnd?.close() }
 
-        // Null out references to help GC.
+        // Null out references to help GC and signal readiness for a new session.
         scrcpyProcess = null
-        clientConnection  = null
-        serverSocket      = null
-        audioWriteEnd     = null
-        shellScope        = null
+        clientConnection = null
+        serverSocket = null
+        audioWriteEnd = null
+        shellScope = null
         audioPipeRelayJob = null
 
-        AppLogger.i(TAG,"Recording pipeline stopped and all ShellService resources were released")
+        AppLogger.i(TAG, "ShellService resource cleanup complete.")
     }
 
     /** Returns whether a recording session is currently active (thread-safe via AtomicBoolean). */

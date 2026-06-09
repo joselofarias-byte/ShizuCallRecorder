@@ -228,8 +228,6 @@ class ScrcpyClient(
                 val payloadBytes = ByteArray(header.payloadSize)
                 inputStream.readFully(payloadBytes)
 
-                AppLogger.v(TAG, "Packet: pts=${header.pts} config=${header.isConfig} keyFrame=${header.isKeyFrame} media=${header.isMedia} size=${header.payloadSize}")
-
                 listener.onAudioPacket(
                     AudioPacket(
                         pts            = header.pts,
