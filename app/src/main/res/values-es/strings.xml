@@ -32,7 +32,7 @@
     <string name="permission_phone_state_label">Estado del teléfono</string>
     <string name="permission_phone_state_description">Necesario para detectar cuándo comienza o termina una llamada.</string>
     <string name="permission_call_log_label">Registro de llamadas</string>
-    <string name="permission_call_log_description">Necesario para recibir el número de teléfono sin ocultar en los eventos de estado del teléfono.</string>
+    <string name="permission_call_log_description">Necesario para recibir el número de teléfono completo en los eventos de estado del teléfono.</string>
     <string name="permission_battery_label">Optimización de la batería</string>
     <string name="permission_battery_description">Mantiene la aplicación activa cuando es necesario y permite evitar posibles limitaciones de inicio en segundo plano.</string>
     <string name="permission_storage_description">Selecciona dónde se guardarán las grabaciones.</string>
@@ -107,7 +107,7 @@
     <string name="contact_select_all">Seleccionar todo</string>
     <string name="contact_unselect_all">Deseleccionar todo</string>
     <string name="recording_standby_notification_title">Llamada en curso</string>
-    <string name="recording_notification_cross_country_tip">🌐Nacional de larga distancia</string>
+    <string name="recording_notification_cross_country_tip">🌐Internacional</string>
     <string name="recording_notification_current_country_tip">🏠País de origen</string>
     <string name="recording_notification_title">Grabación en curso</string>
     <string name="recording_notification_press_to_start">Pulsa para iniciar la grabación</string>

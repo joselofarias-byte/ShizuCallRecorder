@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -124,13 +126,26 @@ fun FileNameFormatDialog(
         },
         onDismissRequest = onDismiss,
         confirmButton = {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 TextButton(
-                    onClick = { text = AppPreferences.DefaultsValue.FILE_NAME_TEMPLATE }
+                    onClick = { text = AppPreferences.DefaultsValue.FILE_NAME_TEMPLATE },
+                    modifier = Modifier.align(Alignment.Start)
                 ) {
-                    Text(stringResource(R.string.general_reset))
+                    Text(
+                        text = stringResource(R.string.general_reset),
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Button(
                         onClick = onDismiss,
                         colors = ButtonDefaults.buttonColors(
@@ -138,10 +153,22 @@ fun FileNameFormatDialog(
                             contentColor = MaterialTheme.colorScheme.onError
                         )
                     ) {
-                        Text(stringResource(R.string.general_cancel))
+                        Text(
+                            text = stringResource(R.string.general_cancel),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
-                    Button(onClick = { onConfirm(text) }) {
-                        Text(stringResource(R.string.general_ok))
+                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onConfirm(text) },
+                        modifier = Modifier.widthIn(min = 80.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.general_ok),
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
