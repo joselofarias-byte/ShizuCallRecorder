@@ -141,6 +141,10 @@ android {
         versionCode = 13
         versionName = "1.1.0"
 
+        // Keep only the locales shipped by the app/dependencies in the final APK.
+        // This trims unused translated resources from AndroidX/Compose/Media3 dependencies.
+        resourceConfigurations += listOf("en", "es")
+
         buildConfigField("String", "CI_BUILD_NUMBER", "\"${ciBuildNumber}\"")
 
         buildConfigField("String", "SCRCPY_VERSION", "\"$scrcpyVersion\"")
@@ -162,6 +166,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
+            isJniDebuggable = false
+            isPseudoLocalesEnabled = false
+            isCrunchPngs = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -189,6 +197,21 @@ android {
     packaging {
         // Exclude the original metadata from libphonenumber to avoid conflicts with our extracted version. This ensures only our processed assets are included in the final APK.
         resources.excludes.add("com/google/i18n/phonenumbers/data/**")
+
+        // Trim library packaging metadata that is not used at runtime.
+        resources.excludes += setOf(
+            "META-INF/*.version",
+            "META-INF/DEPENDENCIES",
+            "META-INF/INDEX.LIST",
+            "META-INF/LICENSE*",
+            "META-INF/NOTICE*",
+            "META-INF/io.netty.versions.properties"
+        )
+
+        // Compress native libraries in the APK to reduce the file sent through LocalSend.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
     androidResources {
         generateLocaleConfig = true

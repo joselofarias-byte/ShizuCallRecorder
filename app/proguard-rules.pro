@@ -20,20 +20,24 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# Prevent code obfuscation to keep the original class, method, and field names.
--dontobfuscate
+# Allow R8 to optimize and obfuscate release builds.
+# Keeping class/source debug attributes increases APK size, so release only keeps
+# metadata commonly needed by Kotlin, Compose, Media3 and reflective libraries.
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
 
-# Keep the original class and method names for debugging on release builds.
--keepattributes LineNumberTable
--keepattributes SourceFile
--keepattributes Signature, InnerClasses, EnclosingMethod
+# Give R8 more freedom to shrink/optimize method visibility.
+-allowaccessmodification
 
-# Strip all Log.v calls
+# Strip noisy logs from release builds.
 -assumenosideeffects class android.util.Log {
   v(...);
+  d(...);
+  i(...);
 }
 
-# Also strip your our custom AppLogger verbose calls
+# Also strip verbose/debug/info calls from the app logger.
 -assumenosideeffects class com.kitsumed.shizucallrecorder.utils.AppLogger {
   v(...);
+  d(...);
+  i(...);
 }
