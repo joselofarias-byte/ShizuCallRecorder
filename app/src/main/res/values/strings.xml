@@ -30,6 +30,20 @@
     <!-- UI SECTIONS                                -->
     <!-- ========================================== -->
 
+    <!-- Recordings Library -->
+    <string name="general_back">Back</string>
+    <string name="recordings_open_library">Recordings</string>
+    <string name="recordings_title">Recordings</string>
+    <string name="recordings_refresh">Refresh</string>
+    <string name="recordings_empty_title">No recordings found</string>
+    <string name="recordings_empty_body">Select a recording folder and record a call first.</string>
+    <string name="recordings_folder_missing">Select a recording folder in Settings first.</string>
+    <string name="playback_title">Playback</string>
+    <string name="playback_play">Play</string>
+    <string name="playback_seek_back">-5s</string>
+    <string name="playback_seek_forward">+5s</string>
+    <string name="playback_duration_unknown">--:--</string>
+
     <!-- Disclaimer Screen -->
     <string name="disclaimer_title">Welcome to ShizuCallRecorder</string>
     <string name="disclaimer_wiki_link_KEYWORD">Wiki</string>
@@ -152,7 +166,7 @@
     <string name="call_detection_mode_incallservice_title" translatable="false">InCallService</string>
     <string name="call_detection_mode_incallservice_description">Use the modern InCallService API. This mode is more efficient and should provide better detection with a lot of informations.</string>
 
-    <string name="settings_record_third_party_calls">Record third-party apps</string>>
+    <string name="settings_record_third_party_calls">Record third-party apps</string>
     <string name="settings_record_third_party_calls_description">Record calls from third-party that integrate with Android telecom system. May result in silent or one-sided recordings.</string>
 
     <string name="settings_tap_to_select_folder">Tap to select folder...</string>

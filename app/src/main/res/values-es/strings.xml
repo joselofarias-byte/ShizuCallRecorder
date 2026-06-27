@@ -4,6 +4,18 @@
     <string name="general_continue">Continuar</string>
     <string name="general_ok">Aceptar</string>
     <string name="general_cancel">Cancelar</string>
+    <string name="general_back">Volver</string>
+    <string name="recordings_open_library">Grabaciones</string>
+    <string name="recordings_title">Grabaciones</string>
+    <string name="recordings_refresh">Actualizar</string>
+    <string name="recordings_empty_title">No se encontraron grabaciones</string>
+    <string name="recordings_empty_body">Selecciona una carpeta de grabaciones y graba una llamada primero.</string>
+    <string name="recordings_folder_missing">Primero selecciona una carpeta de grabaciones en Ajustes.</string>
+    <string name="playback_title">Reproductor</string>
+    <string name="playback_play">Reproducir</string>
+    <string name="playback_seek_back">-5s</string>
+    <string name="playback_seek_forward">+5s</string>
+    <string name="playback_duration_unknown">--:--</string>
     <string name="general_settings">Ajustes</string>
     <string name="general_licenses">Licencias</string>
     <string name="general_record">Grabar</string>
@@ -163,7 +175,7 @@
     <string name="call_detection_mode_phonestate_description">Utiliza la difusión heredada del estado del teléfono, que emplea campos obsoletos. Este método es muy susceptible a condiciones de carrera y nos proporciona una cantidad de información limitada.</string>
     <string name="call_detection_mode_phonestate_limited_support">Este método de detección de llamadas es poco fiable. Obtenemos un valor obsoleto al recibir actualizaciones del estado del teléfono y la lógica de detección es propensa a condiciones de carrera. Tampoco podemos diferenciar entre llamadas del operador y llamadas de aplicaciones de terceros. Sin embargo, puedes solucionar esta limitación ignorando las llamadas anónimas.</string>
     <string name="call_detection_mode_incallservice_description">Utiliza la API moderna de InCallService. Este modo es más eficiente y debería ofrecer una mejor detección con mucha más información.</string>
-    <string name="settings_record_third_party_calls">Grabar aplicaciones de terceros</string>&gt;
+    <string name="settings_record_third_party_calls">Grabar aplicaciones de terceros</string>
     <string name="settings_record_third_party_calls_description">Graba las llamadas de aplicaciones de terceros que se integran con el sistema de telecomunicaciones de Android. Puede provocar grabaciones en silencio o grabar solo de un lado.</string>
     <string name="placeholder_caller_name_desc">El nombre de la persona que llama; primero se consulta la lista de contactos y, si no aparece, recurre al identificador de llamadas de la operadora, si está disponible</string>
     <string name="placeholder_package_name_desc">El nombre o el nombre del paquete de la aplicación que inició la llamada.</string>

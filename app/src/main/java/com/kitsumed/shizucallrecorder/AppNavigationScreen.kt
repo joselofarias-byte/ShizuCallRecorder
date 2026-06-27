@@ -9,6 +9,11 @@
 package com.kitsumed.shizucallrecorder
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -18,6 +23,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -27,10 +36,13 @@ import com.kitsumed.shizucallrecorder.data.AppPreferences
 import com.kitsumed.shizucallrecorder.onboarding.OnboardingStatus
 import com.kitsumed.shizucallrecorder.ui.screens.DisclaimerScreen
 import com.kitsumed.shizucallrecorder.ui.screens.PermissionsScreen
+import com.kitsumed.shizucallrecorder.ui.screens.PlaybackScreen
+import com.kitsumed.shizucallrecorder.ui.screens.RecordingsScreen
 import com.kitsumed.shizucallrecorder.ui.screens.SettingsScreen
 import com.kitsumed.shizucallrecorder.ui.screens.SponsorScreen
 import com.kitsumed.shizucallrecorder.ui.theme.ShizucallrecorderTheme
 import com.kitsumed.shizucallrecorder.ui.viewmodels.AppNavigationViewModel
+import com.kitsumed.shizucallrecorder.ui.viewmodels.RecordingItem
 import com.kitsumed.shizucallrecorder.ui.viewmodels.SettingsViewModel
 
 /**
@@ -124,6 +136,9 @@ fun AppNavigationScreen() {
                 val lastReminderTime = preferences.getLastForcedReminderSupportProjectTimeInApp()
                 val currentTime = System.currentTimeMillis()
 
+                var mainDestination by remember { mutableStateOf(MainDestination.Settings) }
+                var selectedRecording by remember { mutableStateOf<RecordingItem?>(null) }
+
                 // Create a local state initialized by your time check
                 var showSponsorScreen by remember {
                     // Check if it's been more than a year since the last reminder. 31536000000 milliseconds = 1 year.
@@ -139,9 +154,51 @@ fun AppNavigationScreen() {
                         showSponsorScreen = false // Trigger recompose
                     })
                 } else {
-                    SettingsScreen(
-                        viewModel = settingsViewModel
-                    )
+                    when (mainDestination) {
+                        MainDestination.Settings -> {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                SettingsScreen(
+                                    viewModel = settingsViewModel
+                                )
+
+                                Button(
+                                    onClick = { mainDestination = MainDestination.Recordings },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(24.dp)
+                                ) {
+                                    Text(text = stringResource(R.string.recordings_open_library))
+                                }
+                            }
+                        }
+
+                        MainDestination.Recordings -> RecordingsScreen(
+                            onBack = { mainDestination = MainDestination.Settings },
+                            onRecordingClick = { recording ->
+                                selectedRecording = recording
+                                mainDestination = MainDestination.Playback
+                            }
+                        )
+
+                        MainDestination.Playback -> {
+                            val recording = selectedRecording
+                            if (recording == null) {
+                                RecordingsScreen(
+                                    onBack = { mainDestination = MainDestination.Settings },
+                                    onRecordingClick = { nextRecording ->
+                                        selectedRecording = nextRecording
+                                        mainDestination = MainDestination.Playback
+                                    }
+                                )
+                            } else {
+                                PlaybackScreen(
+                                    recordingUri = recording.uri,
+                                    recordingName = recording.displayName,
+                                    onBack = { mainDestination = MainDestination.Recordings }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -160,6 +217,13 @@ private enum class AppScreen {
 
     /** Everything is set up. Show the settings. */
     Settings
+}
+
+/** Secondary screens available after setup is complete. */
+private enum class MainDestination {
+    Settings,
+    Recordings,
+    Playback
 }
 
 /**
