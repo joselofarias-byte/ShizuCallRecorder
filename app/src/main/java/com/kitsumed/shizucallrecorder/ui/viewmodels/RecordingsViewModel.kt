@@ -105,15 +105,7 @@ class RecordingsViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun readRecordingFolderUri(): Uri? {
-        val method = preferences.javaClass.methods.firstOrNull { method ->
-            method.name == "getRecordingFolderUri" && method.parameterTypes.isEmpty()
-        } ?: return null
-
-        return when (val value = method.invoke(preferences)) {
-            is Uri -> value
-            is String -> value.takeIf { it.isNotBlank() }?.let(Uri::parse)
-            else -> null
-        }
+        return preferences.getRecordingFolderUri()
     }
 
     private data class LoadResult(
