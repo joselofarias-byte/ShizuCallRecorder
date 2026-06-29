@@ -9,23 +9,40 @@
 package com.kitsumed.shizucallrecorder
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.ui.platform.LocalContext
 import com.kitsumed.shizucallrecorder.data.AppPreferences
 import com.kitsumed.shizucallrecorder.onboarding.OnboardingStatus
 import com.kitsumed.shizucallrecorder.ui.screens.DisclaimerScreen
 import com.kitsumed.shizucallrecorder.ui.screens.PermissionsScreen
+import com.kitsumed.shizucallrecorder.ui.screens.PlaybackScreen
+import com.kitsumed.shizucallrecorder.ui.screens.RecordingsScreen
 import com.kitsumed.shizucallrecorder.ui.screens.SettingsScreen
+import com.kitsumed.shizucallrecorder.ui.screens.SponsorScreen
 import com.kitsumed.shizucallrecorder.ui.theme.ShizucallrecorderTheme
 import com.kitsumed.shizucallrecorder.ui.viewmodels.AppNavigationViewModel
+import com.kitsumed.shizucallrecorder.ui.viewmodels.RecordingItem
 import com.kitsumed.shizucallrecorder.ui.viewmodels.SettingsViewModel
 
 /**
@@ -48,12 +65,7 @@ import com.kitsumed.shizucallrecorder.ui.viewmodels.SettingsViewModel
  */
 @Composable
 fun AppNavigationScreen() {
-
     val activityContext = LocalContext.current
-
-    /** [LocalLifecycleOwner] provides the lifecycle of the current screen (Activity/Fragment).
-     *  We observe it so we know when the user navigates back to the app. */
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     // AppNavigationViewModel - the "Brain" for routing: owns onboarding state.
     val appNavViewModel: AppNavigationViewModel = viewModel()
@@ -90,19 +102,10 @@ fun AppNavigationScreen() {
     // which is what caused the stale-state bug that existed before this architecture.
     val screenState = resolveScreen(onboardingStatus)
 
-    // [DisposableEffect] attaches a [LifecycleEventObserver] to [lifecycleOwner].
-    // When the user returns to the app (ON_RESUME), both ViewModels refresh so the screen
-    // reflects any changes made while the app was in the background (e.g. permission granted).
-    // [onDispose] removes the observer to prevent leaks when this composable leaves the tree.
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                appNavViewModel.refresh()
-                settingsViewModel.refresh()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    // Trigger when the app resume activity, we want to refresh the navigation screens since
+    // the user may have changed something in the system settings (e.g. granted a permission) that affects the onboarding status.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        appNavViewModel.refresh()
     }
 
     // Derive the active theme from AppPreferences so a theme change triggers a refresh (recompose)
@@ -117,7 +120,6 @@ fun AppNavigationScreen() {
     // -------- Show the right screen
     ShizucallrecorderTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
         when (screenState) {
-
             AppScreen.Disclaimer -> DisclaimerScreen(
                 onContinue = {
                     preferences.setDisclaimerAccepted(true)
@@ -130,9 +132,74 @@ fun AppNavigationScreen() {
                 onPermissionGranted = { appNavViewModel.refresh() }
             )
 
-            AppScreen.Settings -> SettingsScreen(
-                viewModel = settingsViewModel
-            )
+            AppScreen.Settings -> {
+                val lastReminderTime = preferences.getLastForcedReminderSupportProjectTimeInApp()
+                val currentTime = System.currentTimeMillis()
+
+                var mainDestination by remember { mutableStateOf(MainDestination.Settings) }
+                var selectedRecording by remember { mutableStateOf<RecordingItem?>(null) }
+
+                // Create a local state initialized by your time check
+                var showSponsorScreen by remember {
+                    // Check if it's been more than a year since the last reminder. 31536000000 milliseconds = 1 year.
+                    mutableStateOf(currentTime - lastReminderTime > 31536000000L)
+                }
+
+                if (showSponsorScreen) {
+                    SponsorScreen( onDismiss = {
+                        preferences.setLastForcedReminderSupportProjectTimeInApp(currentTime)
+                        // We also update the notification time since it work by opening the app and then having this logic
+                        // show the sponsor screen. Showing it again after they have already seen it would be annoying.
+                        preferences.setLastForcedReminderSupportProjectTimeNotification(currentTime)
+                        showSponsorScreen = false // Trigger recompose
+                    })
+                } else {
+                    when (mainDestination) {
+                        MainDestination.Settings -> {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                SettingsScreen(
+                                    viewModel = settingsViewModel
+                                )
+
+                                Button(
+                                    onClick = { mainDestination = MainDestination.Recordings },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(24.dp)
+                                ) {
+                                    Text(text = stringResource(R.string.recordings_open_library))
+                                }
+                            }
+                        }
+
+                        MainDestination.Recordings -> RecordingsScreen(
+                            onBack = { mainDestination = MainDestination.Settings },
+                            onRecordingClick = { recording ->
+                                selectedRecording = recording
+                                mainDestination = MainDestination.Playback
+                            }
+                        )
+
+                        MainDestination.Playback -> {
+                            val recording = selectedRecording
+                            if (recording == null) {
+                                RecordingsScreen(
+                                    onBack = { mainDestination = MainDestination.Settings },
+                                    onRecordingClick = { nextRecording ->
+                                        selectedRecording = nextRecording
+                                        mainDestination = MainDestination.Playback
+                                    }
+                                )
+                            } else {
+                                PlaybackScreen(
+                                    recording = recording,
+                                    onBack = { mainDestination = MainDestination.Recordings }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -149,6 +216,13 @@ private enum class AppScreen {
 
     /** Everything is set up. Show the settings. */
     Settings
+}
+
+/** Secondary screens available after setup is complete. */
+private enum class MainDestination {
+    Settings,
+    Recordings,
+    Playback
 }
 
 /**

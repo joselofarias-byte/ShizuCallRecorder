@@ -10,9 +10,11 @@ package com.kitsumed.shizucallrecorder.ui.common
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,28 +57,32 @@ fun ToggleListItem(
 @Composable
 private fun PreviewToggleListItem() {
     ShizucallrecorderTheme(darkTheme = false) {
-        Column() {
-            ToggleListItem(
-                label = "Example Checked Toggle",
-                checked = true,
-                onCheckedChange = {},
-                description = "This is what a toggle list item looks like"
-            )
+        Surface(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column() {
+                ToggleListItem(
+                    label = "Example Checked Toggle",
+                    checked = true,
+                    onCheckedChange = {},
+                    description = "This is what a toggle list item looks like"
+                )
 
-            ToggleListItem(
-                label = "Example Unchecked Toggle",
-                checked = false,
-                onCheckedChange = {},
-                description = "This is what a toggle list item looks like"
-            )
+                ToggleListItem(
+                    label = "Example Unchecked Toggle",
+                    checked = false,
+                    onCheckedChange = {},
+                    description = "This is what a toggle list item looks like"
+                )
 
-            ToggleListItem(
-                label = "Example Disabled Toggle",
-                checked = false,
-                enabled = false,
-                onCheckedChange = {},
-                description = "This is what a toggle list item looks like"
-            )
+                ToggleListItem(
+                    label = "Example Disabled Toggle",
+                    checked = false,
+                    enabled = false,
+                    onCheckedChange = {},
+                    description = "This is what a toggle list item looks like"
+                )
+            }
         }
     }
 }

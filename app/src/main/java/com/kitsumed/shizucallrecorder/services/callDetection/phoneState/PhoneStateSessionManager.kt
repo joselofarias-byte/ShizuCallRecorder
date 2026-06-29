@@ -6,21 +6,17 @@
  *  This software is distributed WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-package com.kitsumed.shizucallrecorder.services.call
+package com.kitsumed.shizucallrecorder.services.callDetection.phoneState
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.provider.ContactsContract
 import android.telephony.TelephonyManager
 import com.kitsumed.shizucallrecorder.data.AppPreferences
-import com.kitsumed.shizucallrecorder.data.recordings.RecordingDirection
-import com.kitsumed.shizucallrecorder.data.recordings.RecordingMetadata
+import com.kitsumed.shizucallrecorder.data.call.CallDirection
+import com.kitsumed.shizucallrecorder.data.call.RawCallData
+import com.kitsumed.shizucallrecorder.services.RecordingDecisionEngine
 import com.kitsumed.shizucallrecorder.services.recording.RecordingForegroundService
-import com.kitsumed.shizucallrecorder.system.permissions.PermissionChecks
 import com.kitsumed.shizucallrecorder.utils.AppLogger
 import com.kitsumed.shizucallrecorder.utils.PhoneNumberManager
-import com.kitsumed.shizucallrecorder.utils.PhoneNumberManager.Companion.normalisePhoneNumber
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,30 +26,30 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * CallSessionManager role is to receive telephony state changes, determine call session information (like its direction and metadata),
+ * PhoneStateSessionManager role is to receive telephony state changes, determine call session information (like its direction and metadata),
  * and decide how to start the [RecordingForegroundService] based on user preferences and contact filtering.
  *
  * It is implemented as a singleton that should live until the app process itself die.
  */
-class CallSessionManager private constructor(context: Context) {
+class PhoneStateSessionManager private constructor(context: Context) {
 
     // Constants accessible globally
     companion object {
-        private const val TAG = "SCR:CallSessionManager"
+        private const val TAG = "SCR:PhoneStateSessionManager"
 
         // Singleton instance management
         @Volatile
-        private var INSTANCE: CallSessionManager? = null
+        private var INSTANCE: PhoneStateSessionManager? = null
 
         /**
-         * Provides a thread-safe singleton instance of [CallSessionManager].
+         * Provides a thread-safe singleton instance of [PhoneStateSessionManager].
          * The first call initializes the instance with the provided context, and subsequent calls return the same instance.
          */
-        fun getInstance(context: Context): CallSessionManager {
+        fun getInstance(context: Context): PhoneStateSessionManager {
             return INSTANCE ?: synchronized(this) {
                 // We use applicationContext so we don't accidentally leak an Activity or Service context, causing memory leaks.
                 val safeContext = context.applicationContext
-                INSTANCE ?: CallSessionManager(safeContext).also { INSTANCE = it }
+                INSTANCE ?: PhoneStateSessionManager(safeContext).also { INSTANCE = it }
             }
         }
 
@@ -79,7 +75,7 @@ class CallSessionManager private constructor(context: Context) {
          * 
          * The only exception is if the original phone number was null/blank and a new non-blank phone number is received for the same direction.
          */
-        var currentMetadata: RecordingMetadata? = null
+        var currentMetadata: RawCallData? = null
             set(value) {
                 // Only allow updating settings when null, or to reset it back to null.
                 if (field == null || value == null) {
@@ -94,19 +90,18 @@ class CallSessionManager private constructor(context: Context) {
 
                 val isSameCallDirection = field?.direction == value.direction
                 // Verification Window: We had nothing, now we have a real number
-                val isLateNumberDiscovery = field?.rawPhoneNumber.isNullOrBlank() && !value.rawPhoneNumber.isNullOrBlank()
-                // Enrichment Bypass: It's the same number and call direction, just more data
-                val isEnrichmentUpdate = field?.rawPhoneNumber == value.rawPhoneNumber && value.isEnriched
+                val isLateNumberDiscovery = field?.rawPhoneNumber.isNullOrBlank() && !value.rawPhoneNumber.isBlank()
 
-                if (isSameCallDirection && (isLateNumberDiscovery || isEnrichmentUpdate) && !wasRecordingServiceStartIntentSend) {
+                if (isSameCallDirection && isLateNumberDiscovery && !wasRecordingServiceStartIntentSend) {
                     // We are in the same direction, but we previously had a blank/unknown number, and now we have a real number! This is part of the
                     // "Verification Window" flow, where we MAY first receive an anonymous/unknown number, then, WE MAY receive a real number within 500ms. In this case,
                     // it's the same call session, we want to allow updating the phone number. The only exception is if we already sent a start intent to
                     // the RecordingForegroundService, in that case we want to keep the original metadata for consistency between the two, even if it's anonymous.
                     field = value
+                    AppLogger.d(TAG, "Updated ongoing session call metadata with late number discovery: ${value.rawPhoneNumber} for direction ${value.direction}.")
                 } else
                 {
-                    AppLogger.v(TAG, "Attempted to change ongoing session call metadata from ${field?.direction} to ${value.direction}. This is not allowed since the current session is already locked.")
+                    AppLogger.d(TAG, "Attempted to change ongoing session call metadata from ${field?.direction} to ${value.direction}. This is not allowed since the current session is already locked. isSameCallDirection=$isSameCallDirection, isLateNumberDiscovery=$isLateNumberDiscovery, wasRecordingServiceStartIntentSend=${wasRecordingServiceStartIntentSend}")
                 }
             }
 
@@ -142,7 +137,7 @@ class CallSessionManager private constructor(context: Context) {
     private val appContext: Context = context.applicationContext
     private val preferences = AppPreferences(appContext)
 
-    private val temporaryCache = CallSessionTemporaryCache(appContext)
+    private val temporaryCache = PhoneStateTemporaryCache(appContext)
 
     private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -151,16 +146,9 @@ class CallSessionManager private constructor(context: Context) {
      */
     private var sessionJob: Job? = null
 
-    /**
-     * EXPERIMENTAL: Holds a reference to a debounce job for the IDLE state.
-     * Some OS (like MagicOS) send a false IDLE broadcast around 30 seconds.
-     */
-    private var idleDebounceJob: Job? = null
-    private val IDLE_DEBOUNCE_DELAY_MS = 5000L
-
 
     init {
-        AppLogger.d(TAG, "CallSessionManager initialised")
+        AppLogger.d(TAG, "PhoneStateSessionManager initialised")
     }
 
     // Public API
@@ -172,7 +160,7 @@ class CallSessionManager private constructor(context: Context) {
      * 1. If the received state is IDLE, it means the call has ended. If a session was active, we stop recording and clear the session.
      * 2. If the received state is non-IDLE (RINGING or OFFHOOK), we determinate and lock the call direction (Incoming/Outgoing).
      * 3. When we receive an OFFHOOK state (phone is active) we check the phone number:
-     *    - If we receive a state with a null/anonymous phone number, we delay processing by 500ms, this is the "Verification Window".
+     *    - If we receive a state with an empty string/null as phone number (anonymous), we delay processing by 500ms, this is the "Verification Window".
      *    - If another broadcast containing the real number arrive within 500ms, it takes priority, stops the "Verification Window" and processes immediately.
      *    - If the "Verification Window" expires without receiving a real number, we proceed with the recording using the anonymous number (null).
      *
@@ -194,51 +182,39 @@ class CallSessionManager private constructor(context: Context) {
             TelephonyManager.EXTRA_STATE_IDLE     -> TelephonyManager.CALL_STATE_IDLE
             else -> return
         }
+        // Normalize the phone number for consistent logging and processing, while also handling potential null or anonymous values from the raw OS stream.
+        val normalizedNumber = PhoneNumberManager.normalisePhoneNumber(phoneNumber ?: "")
 
-        AppLogger.i(TAG, "Received new phone state: $stateString (TelephonyManagerINT:$receivedCallState) | Number: ${phoneNumber}")
+        AppLogger.i(TAG, "Received new phone state: $stateString (TelephonyManagerINT:$receivedCallState) | Number: ${normalizedNumber.ifEmpty { "ANONYMOUS/UNKNOWN" }}")
 
         // 1. Handle IDLE (Stop, no longer in a call)
         if (receivedCallState == TelephonyManager.CALL_STATE_IDLE) {
-            AppLogger.d(TAG, "CallSessionManager received IDLE (Call Ended).")
             sessionJob?.cancel() // Cancel pending verification window or ongoing session if any
-
-            // EXPERIMENTAL IDLE DEBOUNCE
+            // Only trigger stop logic if we were previously in an active session. Prevents redundant stop commands on possible repeated IDLE broadcasts.
             if (session.isSessionActive) {
-                AppLogger.d(TAG, "Received IDLE. Starting debounce of ${IDLE_DEBOUNCE_DELAY_MS}ms to confirm call end.")
-                idleDebounceJob?.cancel()
-                idleDebounceJob = managerScope.launch {
-                    delay(IDLE_DEBOUNCE_DELAY_MS)
-                    AppLogger.i(TAG, "IDLE confirmed after debounce; stopping recording.")
-                    AppLogger.d(TAG, "Phone state is now idle (call ended). Sending stop INTENT for ${session.currentMetadata?.direction} call to RecordingForegroundService.")
-                    sendServiceCommand(RecordingForegroundService.ACTION_STOP_RECORDING)
-                    session.clear()
-                }
+                AppLogger.d(TAG, "Phone state is now idle (call ended). Sending ending recording service...")
+                RecordingDecisionEngine.getInstance(appContext).endRecordingSession()
+                session.clear()
             }
             return
         }
 
         // 2. Launch the Coroutine for RINGING or OFFHOOK
-
-        // EXPERIMENTAL: Cancel IDLE debounce if a new active state arrives
-        if (idleDebounceJob?.isActive == true) {
-            AppLogger.w(TAG, "False IDLE detected; active state resumed; cancelling delayed stop.")
-            idleDebounceJob?.cancel()
-        }
-
         // Canceling the previous job for the verification window logic
         sessionJob?.cancel()
         sessionJob = managerScope.launch {
-            processSessionUpdate(receivedCallState, phoneNumber)
+            processSessionUpdate(receivedCallState, normalizedNumber)
         }
     }
 
     /**
      * Processes the session update logic for RINGING and OFFHOOK states, including metadata parsing, session locking, and handling the verification window for anonymous numbers.
+     * @param state The received telephony call state as an integer (e.g., [TelephonyManager.CALL_STATE_RINGING]).
+     * @param normalizedNumber The normalized phone number associated with the call state change, which could an empty string if the original number was anonymous.
      */
-    private suspend fun processSessionUpdate(state: Int, phoneNumber: String?) {
+    private suspend fun processSessionUpdate(state: Int, normalizedNumber: String) {
         // 1. Parse the metadata we received by the OS broadcast.
-        val rawNumber: String? = PhoneNumberManager.sanitizeOemNumber(phoneNumber)
-        val direction = RecordingDirection.fromCallStateOrNull(state)
+        val direction = CallDirection.fromCallStateOrNull(state)
 
         // 2. Previous metadata Restoration Logic (survive process death)
         // If the event is OFFHOOK, and we do not have any metadata in the session yet, it might be because the OS killed our process in the RINGING state,
@@ -248,7 +224,7 @@ class CallSessionManager private constructor(context: Context) {
             val restoredDirection = temporaryCache.restore()
             if (restoredDirection != null) {
                 withContext(Dispatchers.Main) {
-                    session.currentMetadata = RecordingMetadata(rawNumber, restoredDirection)
+                    session.currentMetadata = RawCallData(normalizedNumber, restoredDirection)
                 }
             }
         }
@@ -257,52 +233,36 @@ class CallSessionManager private constructor(context: Context) {
         if (direction != null) {
             withContext(Dispatchers.Main) {
                 // This is automatically locked after the first transition from IDLE. Only allow updating the phone number for the same direction.
-                session.currentMetadata = RecordingMetadata(rawNumber, direction)
+                session.currentMetadata = RawCallData(normalizedNumber, direction)
             }
         }
 
         // 4. Handle OFFHOOK (now in a call) + The Verification Window (Non-blocking delay)
         if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
             // Handle anonymous and blank numbers (due to double broadcast behavior with one having no number)
-            if (rawNumber.isNullOrBlank()) {
-                AppLogger.d(TAG, "Number is blank or null. May be a anonymous call. Starting 500ms verification window.")
+            if (normalizedNumber.isEmpty()) {
+                AppLogger.d(TAG, "Number is blank. May be a anonymous call. Starting 500ms verification window.")
                 delay(500)
                 // If rawNumber is still blank after delay, we continue as anonymous. If we receive another broadcast, cancel is called and stop this logic here.
                 // Meaning we would restart a new 500ms window.
             }
 
-            // Perform metadata ENRICHMENT
-            // This takes the raw metadata and try to populate advanced fields about the phone number.
             val currentMetadata = session.currentMetadata ?: throw IllegalStateException("Current metadata should not be null at this point. There is a logic error in the flow.")
-            val enrichedMetadata = RecordingMetadata.enrichMetadata(appContext, currentMetadata)
 
-            // Move to the Main thread (sync) to be thread-safe
             withContext(Dispatchers.Main) {
-                session.currentMetadata = enrichedMetadata
-                evaluateAndStartService()
+                // Guard clause: Prevent re-entry if a pipeline execution is already successfully acknowledged
+                if (session.wasRecordingServiceStartIntentSend) {
+                    AppLogger.d(TAG, "Current call session has already processed via RecordingDecisionEngine. Skipping duplicate execution to prevent dual-call issues.")
+                    return@withContext
+                }
+
+                // Execute pipeline asynchronously; only lock the state if it actually succeeded
+                val pipelineTriggered = RecordingDecisionEngine.getInstance(appContext).executeDecisionPipeline(currentMetadata)
+                if (pipelineTriggered) {
+                    session.wasRecordingServiceStartIntentSend = true
+                }
             }
         }
-    }
-
-    /**
-     * Evaluates user preferences and contact filtering to decide whether to start recording immediately or go to standby mode,
-     * then sends the appropriate command to the recording service.
-     */
-    private fun evaluateAndStartService() {
-        if (session.wasRecordingServiceStartIntentSend) {
-            AppLogger.d(TAG, "Current call session has already sent a intent that started RecordingForegroundService. Skipping duplicate intent.")
-            return
-        }
-        val sessionMetadata = session.currentMetadata ?: throw IllegalStateException("Metadata should have been determined by now. There is a logic error.")
-
-        if (shouldAutoRecord(sessionMetadata)) {
-            AppLogger.i(TAG, "Sending start INTENT for ${sessionMetadata.direction} call to RecordingForegroundService.")
-            sendServiceCommand(RecordingForegroundService.ACTION_START_RECORDING, sessionMetadata)
-        } else {
-            AppLogger.i(TAG, "Sending standby INTENT for ${sessionMetadata.direction} call to RecordingForegroundService.")
-            sendServiceCommand(RecordingForegroundService.ACTION_STANDBY, sessionMetadata)
-        }
-        session.wasRecordingServiceStartIntentSend = true
     }
 
     @Synchronized
@@ -324,115 +284,5 @@ class CallSessionManager private constructor(context: Context) {
 
         AppLogger.i(TAG, "Handling debug action: '$action' ($telephonyExtState) with debug number: $debugPhoneNumber")
         handlePhoneState(telephonyExtState, debugPhoneNumber)
-    }
-
-    // Private helpers
-
-    /**
-     * Builds and fires an Intent to the [RecordingForegroundService].
-     */
-    private fun sendServiceCommand(action: String, metadata: RecordingMetadata? = null) {
-        val intent = Intent(appContext, RecordingForegroundService::class.java).apply {
-            this.action = action
-            if (metadata != null) {
-                putExtra(RecordingMetadata.EXTRA_METADATA, metadata)
-            }
-        }
-        if (action == RecordingForegroundService.ACTION_STOP_RECORDING) {
-            // When Stopping, we use StartService as we assume the service is already running from startForegroundService. We only send it a new Intent that trigger cleanup.
-            // we don't use stopService as it would give us a very short time to do any cleanup before the OS kill the service and prevent cleanup finalization.
-            appContext.startService(intent)
-        } else {
-            appContext.startForegroundService(intent)
-        }
-    }
-
-    /**
-     * Determines whether the current call session should be automatically recorded based on user preferences.
-     */
-    private fun shouldAutoRecord(metadata: RecordingMetadata): Boolean {
-        val rawNumber = metadata.rawPhoneNumber?.trim().orEmpty()
-        val normalisedNumber = normalisePhoneNumber(rawNumber)
-        val isAnonymous = normalisedNumber.isBlank()
-
-        when (metadata.direction) {
-            RecordingDirection.INCOMING -> {
-                if (!preferences.isAutoRecordIncomingEnabled()) {
-                    AppLogger.i(TAG, "Auto-record for incoming call is disabled")
-                    return false
-                }
-
-                if (isAnonymous) {
-                    if (preferences.isIgnoreAnonymousIncomingEnabled()) {
-                        AppLogger.i(TAG, "Auto-record is ignoring incoming call since it's anonymous.")
-                        return false
-                    }
-                }
-
-                if (metadata.isCrossCountry && preferences.isIgnoreCrossCountryIncomingEnabled()) {
-                    AppLogger.i(TAG, "Auto-record is ignoring incoming call since it's cross-country.")
-                    return false
-                }
-
-                if (shouldIgnoreContact(normalisedNumber, preferences.getIgnoreContactsModeIncoming(), preferences.getIgnoredContactsIncoming())) {
-                    AppLogger.i(TAG, "Auto-record is ignoring incoming call based on contact filtering.")
-                    return false
-                }
-
-                AppLogger.i(TAG, "Auto-record is enabled for this incoming call.")
-                return true
-            }
-            RecordingDirection.OUTGOING -> {
-                if (!preferences.isAutoRecordOutgoingEnabled()) {
-                    AppLogger.i(TAG, "Auto-record for outgoing call is disabled")
-                    return false
-                }
-
-                if (metadata.isCrossCountry && preferences.isIgnoreCrossCountryOutgoingEnabled()) {
-                    AppLogger.i(TAG, "Auto-record is ignoring outgoing call since it's cross-country.")
-                    return false
-                }
-
-                if (shouldIgnoreContact(normalisedNumber, preferences.getIgnoreContactsModeOutgoing(), preferences.getIgnoredContactsOutgoing())) {
-                    AppLogger.i(TAG, "Auto-record is ignoring outgoing call for based on contact filtering.")
-                    return false
-                }
-
-                AppLogger.i(TAG, "Auto-record is enabled for this outgoing call.")
-                return true
-            }
-        }
-    }
-
-    /**
-     * Determines whether a call from/to a specific phone number should be ignored based on the user's contact filtering preferences.
-     */
-    private fun shouldIgnoreContact(normalisedNumber: String, mode: AppPreferences.IgnoreContactsMode, ignoredNumbers: Set<String>): Boolean {
-        val shouldIgnore = when (mode) {
-            AppPreferences.IgnoreContactsMode.NONE  -> false
-            AppPreferences.IgnoreContactsMode.ALL   -> {
-                if (!PermissionChecks.hasContactsPermission(appContext)) {
-                    false
-                } else {
-                    val lookupUri = Uri.withAppendedPath(
-                        ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
-                        Uri.encode(normalisedNumber)
-                    )
-
-                    // Perform the query
-                    val cursor = appContext.contentResolver.query(lookupUri, arrayOf(ContactsContract.PhoneLookup._ID), null, null, null)
-
-                    // Check if we got any results
-                    cursor?.use {
-                        // Basically, if we can find a contact, we return the object, so it's not null/false, else it's false.
-                        it.moveToFirst()
-                    } ?: false
-                }
-            }
-            AppPreferences.IgnoreContactsMode.SELECTED ->
-                ignoredNumbers.any { normalisePhoneNumber(it) == normalisedNumber }
-        }
-
-        return shouldIgnore
     }
 }

@@ -9,8 +9,16 @@
 package com.kitsumed.shizucallrecorder.utils
 
 import android.content.Context
+import android.net.Uri
+import android.os.Build
 import android.util.Log
+import com.kitsumed.shizucallrecorder.BuildConfig
 import com.kitsumed.shizucallrecorder.ILogCallback
+import com.kitsumed.shizucallrecorder.data.AppPreferences
+import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyConfig
+import com.kitsumed.shizucallrecorder.utils.AppLogger.init
+import com.kitsumed.shizucallrecorder.utils.AppLogger.initAsRemote
+import com.kitsumed.shizucallrecorder.utils.AppLogger.redact
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,20 +26,15 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import rikka.shizuku.Shizuku
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
+import java.io.OutputStreamWriter
+import java.io.PrintWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import android.net.Uri
-import android.os.Build
-import com.kitsumed.shizucallrecorder.BuildConfig
-import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyConfig
-import java.io.OutputStreamWriter
-import java.io.PrintWriter
-import com.kitsumed.shizucallrecorder.data.AppPreferences
-import rikka.shizuku.Shizuku
 
 /**
  * A unified, thread-safe, and asynchronous logging utility with built-in log rotation and redaction capabilities.
@@ -216,10 +219,11 @@ object AppLogger {
      */
     fun exportReport(context: Context, destinationUri: Uri) {
         val file = logFile ?: return
+        val prefs = AppPreferences(context)
         context.contentResolver.openOutputStream(destinationUri, "w")?.use { outputStream ->
             PrintWriter(OutputStreamWriter(outputStream, Charsets.UTF_8)).use { writer ->
                 writer.println("=== ShizuCallRecorder AppLogger Export ===")
-                writer.println("Generated: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.US).format(Date())}")
+                writer.println("Generated: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.CANADA).format(Date())}")
                 writer.println("App Version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
                 writer.println("Shizuku Supported Server API: ${Shizuku.getLatestServiceVersion()}")
                 writer.println("Scrcpy Server: ${ScrcpyConfig.SCRCPY_VERSION}")
@@ -229,6 +233,8 @@ object AppLogger {
                 writer.println("Product: ${Build.PRODUCT}")
                 writer.println("Android Version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
                 writer.println("Device Country Iso Estimation: ${PhoneNumberManager.getInstance(context).getDeviceCountryIso()}")
+                writer.println("Log Redaction Disabled / Debug Mode : ${prefs.isDebugEnabled()}")
+                writer.println("Call Detection Method: ${prefs.getCallDetectionMode().key}")
                 writer.println("===========================================")
                 writer.println()
                 writer.flush()

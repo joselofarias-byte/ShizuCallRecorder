@@ -14,15 +14,17 @@ import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kitsumed.shizucallrecorder.BuildConfig
-import com.kitsumed.shizucallrecorder.services.call.CallSessionManager
 import com.kitsumed.shizucallrecorder.data.AppPreferences
 import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyAudioCodec
+import com.kitsumed.shizucallrecorder.services.callDetection.CallDetectionMode
+import com.kitsumed.shizucallrecorder.services.callDetection.CallDetectionOrchestrator
+import com.kitsumed.shizucallrecorder.services.callDetection.phoneState.PhoneStateSessionManager
+import com.kitsumed.shizucallrecorder.utils.AppLogger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import com.kitsumed.shizucallrecorder.utils.AppLogger
 
 // -------- Screen state & action types owned by this ViewModel
 
@@ -72,6 +74,8 @@ interface SettingsActions {
     fun setShizukuKeepAliveEnabled(enabled: Boolean)
     fun setShizukuAuthKey(key: String)
     fun setFileNameTemplate(template: String)
+    fun setCallDetectionMode(mode: CallDetectionMode)
+    fun setRecordThirdPartyCalls(enabled: Boolean)
 }
 
 /**
@@ -382,11 +386,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     override fun triggerDebugAction(action: DebugAction) {
         viewModelScope.launch {
             val actionType = when (action) {
-                DebugAction.IDLE     -> CallSessionManager.ACTION_DEBUG_IDLE
-                DebugAction.RINGING  -> CallSessionManager.ACTION_DEBUG_RINGING
-                DebugAction.OFFHOOK  -> CallSessionManager.ACTION_DEBUG_OFFHOOK
+                DebugAction.IDLE     -> PhoneStateSessionManager.ACTION_DEBUG_IDLE
+                DebugAction.RINGING  -> PhoneStateSessionManager.ACTION_DEBUG_RINGING
+                DebugAction.OFFHOOK  -> PhoneStateSessionManager.ACTION_DEBUG_OFFHOOK
             }
-            CallSessionManager.getInstance(appContext).handleDebugAction(actionType)
+            PhoneStateSessionManager.getInstance(appContext).handleDebugAction(actionType)
         }
     }
 
@@ -398,5 +402,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             AppLogger.exportReport(appContext, uri)
         }
+    }
+
+    /**
+     * Sets the call detection mode, which determines how the app detects when calls start and end.
+     */
+    override fun setCallDetectionMode(mode: CallDetectionMode) {
+        preferences.setCallDetectionMode(mode)
+        CallDetectionOrchestrator(appContext).syncComponents() // Sync the PackageManager state to reflect the new call detection mode immediately
+        refresh()
+    }
+
+    /**
+     * Enables or disables recording of third-party calls (e.g. WhatsApp, Telegram).
+     */
+    override fun setRecordThirdPartyCalls(enabled: Boolean) {
+        preferences.setRecordThirdPartyCallsEnabled(enabled)
+        refresh()
     }
 }

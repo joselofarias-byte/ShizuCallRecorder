@@ -6,11 +6,12 @@
  *  This software is distributed WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-package com.kitsumed.shizucallrecorder.services.call
+package com.kitsumed.shizucallrecorder.services.callDetection.phoneState
 
 import android.content.Context
 import androidx.core.content.edit
-import com.kitsumed.shizucallrecorder.data.recordings.RecordingDirection
+import com.kitsumed.shizucallrecorder.data.call.CallDirection
+import com.kitsumed.shizucallrecorder.services.callDetection.phoneState.PhoneStateTemporaryCache.Companion.MAX_AGE_MS
 import com.kitsumed.shizucallrecorder.utils.AppLogger
 
 /**
@@ -21,7 +22,7 @@ import com.kitsumed.shizucallrecorder.utils.AppLogger
  * This workaround could cause some edges cases. The user receving a ringing call, the app die, the user make an outgoing call, but the app restore the ringing state.
  * The "fix" is to only keep a direction valid for a short period of time [MAX_AGE_MS]. It reduces the chances of this happening.
  */
-class CallSessionTemporaryCache(private val context: Context) {
+class PhoneStateTemporaryCache(private val context: Context) {
 
     companion object {
         private const val TAG = "SCR:CallSessionTemporaryCache"
@@ -38,7 +39,7 @@ class CallSessionTemporaryCache(private val context: Context) {
      * Android often kills background processes before the user answers (within 5-10s).
      * This ensures we don't lose the call direction while waiting for the OFFHOOK state.
      */
-    fun save(direction: RecordingDirection?) {
+    fun save(direction: CallDirection?) {
         context.getSharedPreferences(PREFS_CACHE, Context.MODE_PRIVATE).edit {
             putString(KEY_CACHE_DIRECTION, direction?.token)
             putLong(KEY_CACHE_TIMESTAMP, System.currentTimeMillis())
@@ -47,9 +48,9 @@ class CallSessionTemporaryCache(private val context: Context) {
 
     /**
      * Attempt to recover direction in case the process was killed during the RINGING state.
-     * @return The restored [RecordingDirection] if valid and not stale, or null if no valid cache exists.
+     * @return The restored [CallDirection] if valid and not stale, or null if no valid cache exists.
      */
-    fun restore(): RecordingDirection? {
+    fun restore(): CallDirection? {
         val prefs = context.getSharedPreferences(PREFS_CACHE, Context.MODE_PRIVATE)
         val timestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0L)
 
@@ -59,7 +60,7 @@ class CallSessionTemporaryCache(private val context: Context) {
 
         // Restore if data is less than MAX_AGE_MS seconds old
         if (System.currentTimeMillis() - timestamp <= MAX_AGE_MS) {
-            val restoredDir = savedDirToken?.let { RecordingDirection.fromToken(it) }
+            val restoredDir = savedDirToken?.let { CallDirection.fromToken(it) }
             if (restoredDir != null) {
                 AppLogger.d(TAG, "Restored direction (${restoredDir.token}) from TemporaryCache (process was killed during RINGING).")
                 return restoredDir

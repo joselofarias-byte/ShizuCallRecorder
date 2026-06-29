@@ -10,10 +10,14 @@ package com.kitsumed.shizucallrecorder.data
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.kitsumed.shizucallrecorder.R
 import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyAudioCodec
 import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyAudioSource
+import com.kitsumed.shizucallrecorder.services.callDetection.CallDetectionMode
+import com.kitsumed.shizucallrecorder.utils.AppLogger
 
 /**
  * AppPreferences wraps [android.content.SharedPreferences] to provide typed access to all
@@ -23,6 +27,8 @@ class AppPreferences(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "shizucallrecorder_prefs"
+
+        private const val TAG = "SCR:AppPreferences"
     }
 
     /**
@@ -32,10 +38,15 @@ class AppPreferences(context: Context) {
     object DefaultsValue {
         // --- Onboarding & Legal ---
         const val DISCLAIMER_ACCEPTED = false
+
+        // Calculates (Install Time - 10 Months) to leave exactly 2 months remaining
+        fun LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME(context: Context): Long = (runCatching { context.packageManager.getPackageInfo(context.packageName, 0).firstInstallTime }.getOrDefault(Long.MIN_VALUE)) - 25920000000L // 300 days in milliseconds
         
         // --- Storage & General ---
         val RECORDING_FOLDER_URI: String? = null
         const val VIBRATION_ENABLED = true
+        val CALL_DETECTION_MODE = CallDetectionMode.getDefaultModeForDevice().key
+        const val RECORD_THIRD_PARTY_CALLS = false
         
         // --- Automation ---
         const val AUTO_RECORD_INCOMING = false
@@ -86,16 +97,14 @@ class AppPreferences(context: Context) {
     enum class Key(val id: String) {
         // --- Onboarding & Legal ---
         DISCLAIMER_ACCEPTED("disclaimer_accepted"),
-        
-        // --- Storage & General ---
+
+        LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME_INAPP("last_forced_reminder_support_project_time_inapp"),
+        LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME_NOTIFICATION("last_forced_reminder_support_project_time_notification"),
+        // --- Others ---
         RECORDING_FOLDER_URI("recording_folder_uri"),
         VIBRATION_ENABLED("vibration_enabled"),
-        
-        // --- Automation ---
         AUTO_RECORD_INCOMING("auto_record_incoming"),
         AUTO_RECORD_OUTGOING("auto_record_outgoing"),
-        
-        // --- Filters & Contacts ---
         IGNORE_ANONYMOUS_INCOMING("ignore_anonymous_incoming"),
         IGNORE_CROSS_COUNTRY_INCOMING("ignore_cross_country_incoming"),
         IGNORE_CROSS_COUNTRY_OUTGOING("ignore_cross_country_outgoing"),
@@ -103,28 +112,22 @@ class AppPreferences(context: Context) {
         IGNORE_CONTACTS_MODE_OUTGOING("ignore_contacts_mode_outgoing"),
         IGNORED_CONTACTS_INCOMING("ignored_contacts_incoming"),
         IGNORED_CONTACTS_OUTGOING("ignored_contacts_outgoing"),
-        
-        // --- Developer & Debug ---
         LOGGING_ENABLED("logging_enabled"),
         DEBUG_ENABLED("debug_enabled"),
         DEBUG_CALLER_NUMBER("debug_caller_number"),
-        
-        // --- Audio/Scrcpy Quality ---
         AUDIO_SOURCE("audio_source"),
         AUDIO_CODEC("audio_codec"),
         AUDIO_BITRATE("audio_bitrate"),
-        
-        // --- File Naming ---
         FILE_NAME_TEMPLATE("file_name_template"),
-
-        // --- UI & Appearance ---
         THEME_MODE("theme_mode"),
         DYNAMIC_COLOR("dynamic_color"),
         SHOW_TOASTS("show_toasts"),
         SHIZUKU_AUTO_MANAGE("shizuku_auto_manage"),
         SHIZUKU_START_ON_RECORD("shizuku_start_on_record"),
         SHIZUKU_KEEP_ALIVE("shizuku_keep_alive"),
-        SHIZUKU_AUTH_KEY("shizuku_auth_key");
+        SHIZUKU_AUTH_KEY("shizuku_auth_key"),
+        CALL_DETECTION_MODE("call_detection_mode"),
+        RECORD_THIRD_PARTY_CALLS("record_third_party_calls");
     }
 
     // -------- Nested enums
@@ -160,8 +163,10 @@ class AppPreferences(context: Context) {
      *
      * @param key The lowercase string.
      */
-    enum class ThemeMode(val key: String) {
-        SYSTEM("system"), LIGHT("light"), DARK("dark");
+    enum class ThemeMode(val key: String, val displayNameResId: Int) {
+        SYSTEM("system", R.string.settings_theme_mode_system),
+        LIGHT("light", R.string.settings_theme_mode_light),
+        DARK("dark", R.string.settings_theme_mode_dark);
         companion object {
             /**
              * Parses a key string back into an enum constant.
@@ -175,6 +180,7 @@ class AppPreferences(context: Context) {
 
     // -------- SharedPreferences instance
 
+    private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     // -------- Helpers to simplify reading/writing
@@ -187,6 +193,9 @@ class AppPreferences(context: Context) {
 
     private fun getInt(key: Key, default: Int = 0) = prefs.getInt(key.id, default)
     private fun setInt(key: Key, value: Int) = prefs.edit { putInt(key.id, value) }
+
+    private fun getLong(key: Key, default: Long = 0L) = prefs.getLong(key.id, default)
+    private fun setLong(key: Key, value: Long) = prefs.edit { putLong(key.id, value) }
 
     private fun getStringSet(key: Key, default: Set<String> = emptySet()) = prefs.getStringSet(key.id, default)?.toSet().orEmpty()
     private fun setStringSet(key: Key, value: Set<String>) = prefs.edit { putStringSet(key.id, value) }
@@ -203,6 +212,18 @@ class AppPreferences(context: Context) {
     /** Sets whether the user has accepted the disclaimer. */
     fun setDisclaimerAccepted(accepted: Boolean) = setBoolean(Key.DISCLAIMER_ACCEPTED, accepted)
 
+    /** Gets the timestamp of the last forced reminder about support project shown in-app. */
+    fun getLastForcedReminderSupportProjectTimeInApp() = getLong(Key.LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME_INAPP, DefaultsValue.LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME(appContext))
+
+    /** Sets the timestamp of the last forced reminder about support project shown in-app. */
+    fun setLastForcedReminderSupportProjectTimeInApp(time: Long) = setLong(Key.LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME_INAPP, time)
+
+    /** Gets the timestamp of the last forced reminder about support project shown in notifications. */
+    fun getLastForcedReminderSupportProjectTimeNotification() = getLong(Key.LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME_NOTIFICATION, DefaultsValue.LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME(appContext))
+
+    /** Sets the timestamp of the last forced reminder about support project shown in notifications. */
+    fun setLastForcedReminderSupportProjectTimeNotification(time: Long) = setLong(Key.LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME_NOTIFICATION, time)
+
     // -------- Storage & General --------
 
     /** Gets the user-selected folder URI for storing recordings. */
@@ -216,6 +237,44 @@ class AppPreferences(context: Context) {
     
     /** Sets whether vibration is enabled. */
     fun setVibrationEnabled(enabled: Boolean) = setBoolean(Key.VIBRATION_ENABLED, enabled)
+
+    /**
+     * Gets the current preferred detection mode, automatically falling back
+     * to a supported system mode if the saved preference is illegal for the current API.
+     */
+    fun getCallDetectionMode(): CallDetectionMode {
+        val savedKey = getString(Key.CALL_DETECTION_MODE, DefaultsValue.CALL_DETECTION_MODE)
+        val savedMode = try {
+            CallDetectionMode.fromKey(savedKey)
+        } catch (e: IllegalArgumentException) {
+            AppLogger.e(TAG, "Invalid saved CallDetectionMode key: $savedKey, falling back to default. Error: ${e.message}")
+            CallDetectionMode.getDefaultModeForDevice()
+        }
+
+        // Safety fallback for API compatibility mismatches, for example if user update or downgrade Android version
+        return if (savedMode.isSupportedOnCurrentApi()) {
+            savedMode
+        } else {
+            AppLogger.w(TAG, "Saved CallDetectionMode ${savedMode.key} is not supported on current API level, falling back to default.")
+            CallDetectionMode.getDefaultModeForDevice()
+        }
+    }
+
+    /**
+     * Sets the call direction mode.
+     * @throws IllegalArgumentException if the provided mode is not supported on the current API level, to prevent saving an invalid preference.
+     */
+    fun setCallDetectionMode(mode: CallDetectionMode) {
+        if (!mode.isSupportedOnCurrentApi()) {
+            throw IllegalArgumentException("Mode ${mode.name} is not supported on API ${Build.VERSION.SDK_INT}")
+        }
+        setString(Key.CALL_DETECTION_MODE, mode.key)
+    }
+
+    /** Checks if recording of calls from third-party apps (e.g. WhatsApp, Signal) is enabled. */
+    fun isRecordThirdPartyCallsEnabled() = getBoolean(Key.RECORD_THIRD_PARTY_CALLS, DefaultsValue.RECORD_THIRD_PARTY_CALLS)
+    /** Sets whether recording of calls from third-party apps is enabled. */
+    fun setRecordThirdPartyCallsEnabled(enabled: Boolean) = setBoolean(Key.RECORD_THIRD_PARTY_CALLS, enabled)
 
     // -------- Automation --------
 

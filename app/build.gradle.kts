@@ -27,6 +27,9 @@ val libphonenumberMetadataDir = layout.buildDirectory.dir("generated/libphonenum
 // Detect if we're running in a CI environment (e.g., GitHub Actions).
 val isEnvironmentGithubCI = providers.environmentVariable("GITHUB_ACTIONS").isPresent
 
+// Detect if we want to bypass signing checks
+val shouldSkipSigning = providers.environmentVariable("SKIP_SIGNING").orNull?.toBoolean() ?: false
+
 abstract class DownloadAssetTask : DefaultTask() {
     @get:Input
     abstract val url: Property<String>
@@ -46,12 +49,12 @@ abstract class DownloadAssetTask : DefaultTask() {
 
         // Internal check to skip if already correct
         if (targetFile.exists() && calculateSha256(targetFile).equals(sha256.get(), ignoreCase = true)) {
-            println("${assetName.get()} is already up-to-date.")
+            logger.info("${assetName.get()} is already up-to-date.")
             return
         }
 
         targetFile.parentFile.mkdirs()
-        println("Downloading ${assetName.get()}...")
+        logger.lifecycle("Downloading ${assetName.get()}...")
 
         URI(url.get()).toURL().openStream().use { input ->
             targetFile.outputStream().use { output ->
@@ -108,9 +111,23 @@ val extractLibphonenumberMetadata = tasks.register<ExtractMetadataTask>("extract
     into(outputDir)
 }
 
-val ciVersionCode = providers.gradleProperty("versionCode").map { it.toIntOrNull() }.orElse(1)
-val ciVersionName = providers.gradleProperty("versionName").orElse("1.0.0")
-val ciBuildNumber = providers.gradleProperty("ciBuildNumber").orElse("Local")
+tasks.register("writeVersionForCi") {
+    // Define the output file path (e.g., app/build/outputs/version.txt)
+    val outputFile = layout.buildDirectory.file("outputs/version.txt")
+    outputs.file(outputFile)
+
+    doLast {
+        val file = outputFile.get().asFile
+        file.parentFile.mkdirs() // Ensure the outputs directory exists
+        file.writeText(android.defaultConfig.versionName!!)
+        logger.lifecycle("Successfully wrote versionName to ${file.absolutePath}")
+    }
+}
+
+val ciBuildNumber = providers.gradleProperty("ciBuildNumber").getOrNull() ?: run {
+    logger.lifecycle("[INFO] 'ciBuildNumber' not defined. Defaulting to 'Local'")
+    "Local"
+}
 
 android {
     namespace = "com.kitsumed.shizucallrecorder"
@@ -120,10 +137,15 @@ android {
         applicationId = "com.kitsumed.shizucallrecorder"
         minSdk = 30
         targetSdk = 36
-        versionCode = ciVersionCode.get()
-        versionName = ciVersionName.get()
+        // Keep theses two values hard-coded here and update them per version. (To keep F-Droid compatibility since their parser is very basic)
+        versionCode = 13
+        versionName = "1.1.0"
 
-        buildConfigField("String", "CI_BUILD_NUMBER", "\"${ciBuildNumber.get()}\"")
+        // Keep only the locales shipped by the app/dependencies in the final APK.
+        // This trims unused translated resources from AndroidX/Compose/Media3 dependencies.
+        resourceConfigurations += listOf("en", "es")
+
+        buildConfigField("String", "CI_BUILD_NUMBER", "\"${ciBuildNumber}\"")
 
         buildConfigField("String", "SCRCPY_VERSION", "\"$scrcpyVersion\"")
         buildConfigField("String", "SCRCPY_SERVER_SHA256", "\"$scrcpyServerSha256\"")
@@ -132,12 +154,11 @@ android {
     signingConfigs {
         // Signing config for CI environments.
         create("ci-release") {
-            if (isEnvironmentGithubCI) {
+            if (isEnvironmentGithubCI && !shouldSkipSigning) {
                 storeFile = file(System.getenv("KEYSTORE_FILE") ?: throw GradleException("Keystore file not provided for release signing. env variable: KEYSTORE_FILE"))
                 storePassword = System.getenv("KEYSTORE_PASSWORD") ?: throw GradleException("Keystore password not provided for release signing. env variable: KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS") ?: throw GradleException("Key alias not provided for release signing. env variable: KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD") ?:throw GradleException("Key password not provided for release signing. env variable: KEY_PASSWORD")
-
             }
         }
     }
@@ -145,13 +166,22 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
+            isJniDebuggable = false
+            isPseudoLocalesEnabled = false
+            isCrunchPngs = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
             if (isEnvironmentGithubCI) {
-                println("Configuring release build for CI environment. Official release signing keys will be used.")
-                signingConfig = signingConfigs.getByName("ci-release")
+                logger.lifecycle("Configuring release build for CI environment. Official release signing keys will be used.")
+                if (shouldSkipSigning) {
+                    logger.warn("WARNING: SKIP_SIGNING is set. The build will NOT be signed, which may cause installation to fail on Android Devices. Do not set SKIP_SIGNING when BUILDING the apk! You can for other tasks.")
+                } else
+                {
+                    signingConfig = signingConfigs.getByName("ci-release")
+                }
             }
         }
     }
@@ -167,9 +197,30 @@ android {
     packaging {
         // Exclude the original metadata from libphonenumber to avoid conflicts with our extracted version. This ensures only our processed assets are included in the final APK.
         resources.excludes.add("com/google/i18n/phonenumbers/data/**")
+
+        // Trim library packaging metadata that is not used at runtime.
+        resources.excludes += setOf(
+            "META-INF/*.version",
+            "META-INF/DEPENDENCIES",
+            "META-INF/INDEX.LIST",
+            "META-INF/LICENSE*",
+            "META-INF/NOTICE*",
+            "META-INF/io.netty.versions.properties"
+        )
+
+        // Compress native libraries in the APK to reduce the file sent through LocalSend.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
     androidResources {
         generateLocaleConfig = true
+    }
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles (for Google Play)
+        includeInBundle = false
     }
 }
 
@@ -242,6 +293,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    // Media3 / Playback
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.common)
+    implementation(libs.androidx.media3.ui)
+
 
     // AboutLibraries
     implementation(libs.aboutlibraries.core)
@@ -254,3 +310,4 @@ dependencies {
     implementation(libs.shizukuApi)
     implementation(libs.shizukuProvider)
 }
+

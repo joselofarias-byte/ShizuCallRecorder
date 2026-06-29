@@ -9,66 +9,75 @@
 package com.kitsumed.shizucallrecorder.ui.screens
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kitsumed.shizucallrecorder.R
-import com.kitsumed.shizucallrecorder.system.PersistentFolderPickerContract
-import com.kitsumed.shizucallrecorder.system.copyToClipboard
 import com.kitsumed.shizucallrecorder.data.AppPreferences
 import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyAudioCodec
 import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyAudioSource
 import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyConfig
+import com.kitsumed.shizucallrecorder.services.callDetection.CallDetectionMode
+import com.kitsumed.shizucallrecorder.system.PersistentFolderPickerContract
+import com.kitsumed.shizucallrecorder.system.openGithubReportIssue
+import com.kitsumed.shizucallrecorder.system.openGithubWiki
 import com.kitsumed.shizucallrecorder.system.storage.SafHelper
-import com.kitsumed.shizucallrecorder.system.openGithub
 import com.kitsumed.shizucallrecorder.system.takePersistableFolderPermission
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kitsumed.shizucallrecorder.ui.common.ContactSelectionDialog
 import com.kitsumed.shizucallrecorder.ui.common.FileNameFormatDialog
 import com.kitsumed.shizucallrecorder.ui.common.M3DropdownField
 import com.kitsumed.shizucallrecorder.ui.common.OptionItem
 import com.kitsumed.shizucallrecorder.ui.common.ToggleListItem
+import com.kitsumed.shizucallrecorder.ui.theme.ShizucallrecorderTheme
+import com.kitsumed.shizucallrecorder.ui.viewmodels.ContactPickerState
 import com.kitsumed.shizucallrecorder.ui.viewmodels.ContactPickerType
 import com.kitsumed.shizucallrecorder.ui.viewmodels.ContactPickerViewModel
 import com.kitsumed.shizucallrecorder.ui.viewmodels.DebugAction
 import com.kitsumed.shizucallrecorder.ui.viewmodels.SettingsActions
 import com.kitsumed.shizucallrecorder.ui.viewmodels.SettingsViewModel
-import com.kitsumed.shizucallrecorder.ui.viewmodels.ContactPickerState
-import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.mikepenz.aboutlibraries.ui.compose.android.produceLibraries
-import androidx.activity.result.contract.ActivityResultContracts
-import android.net.Uri
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import com.kitsumed.shizucallrecorder.system.openGithubReportIssue
+import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
+import kotlinx.coroutines.delay
 import org.xmlpull.v1.XmlPullParser
 import java.util.Locale
 
@@ -156,8 +165,6 @@ fun SettingsContent(
     onExportLogs: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showLicensesDialog by remember { mutableStateOf(false) }
-
     Surface(
         modifier = modifier
             .fillMaxSize()
@@ -176,7 +183,7 @@ fun SettingsContent(
                     fontWeight = FontWeight.Bold
                 )
             }
-            item { AboutSection(versionString = actions.getAppVersion(), onShowLicenses = { showLicensesDialog = true }) }
+            item { AboutSection(versionString = actions.getAppVersion()) }
             item {
                 RecordingSection(
                     preferences = preferences,
@@ -194,6 +201,78 @@ fun SettingsContent(
         }
     }
 
+    // The contact-picker dialog sits on top of the settings content.
+    contactPickerState?.let { picker ->
+        ContactSelectionDialog(
+            title = when (picker.type) {
+                ContactPickerType.INCOMING -> stringResource(R.string.settings_select_contacts_incoming)
+                ContactPickerType.OUTGOING -> stringResource(R.string.settings_select_contacts_outgoing)
+            },
+            contacts = picker.contacts,
+            initialSelection = picker.selectedNumbers,
+            onConfirm = onConfirmContacts,
+            onDismiss = onDismissContacts
+        )
+    }
+}
+
+// ── Settings sections ──────────────────────────────────────────────────────────────────────
+
+/** Shows the app version, server version, clipboard buttons, and a GitHub link.
+ */
+@Composable
+private fun AboutSection(versionString: String) {
+    val context = LocalContext.current
+    val serverVersion = ScrcpyConfig.SCRCPY_VERSION
+
+    var showLicensesDialog by remember() { mutableStateOf(false) }
+    var showSponsorScreen by remember() { mutableStateOf(false) }
+
+    SettingsSection(title = stringResource(R.string.settings_section_about)) {
+        ListItem(
+            headlineContent = { Text(versionString) },
+            supportingContent = {
+                Text(stringResource(R.string.settings_scrcpy_server, serverVersion))
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        )
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { context.openGithubWiki() },
+                modifier = Modifier.weight(1f)
+            ) { Text(stringResource(R.string.settings_open_github_Wiki)) }
+            OutlinedButton(
+                onClick = { showLicensesDialog = true },
+                modifier = Modifier.weight(1f)
+            ) { Text(stringResource(R.string.settings_view_licenses)) }
+        }
+        Button(
+            onClick = { showSponsorScreen = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) { Text(stringResource(R.string.sponsor_title)) }
+    }
+
+    if (showSponsorScreen) {
+        Dialog(
+            onDismissRequest = { showSponsorScreen = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false, // False for edge-to-edge, since our SponsorScreen take full screen
+                decorFitsSystemWindows = false,
+                dismissOnClickOutside = false,
+                dismissOnBackPress = true,
+
+            )
+        ) {
+            SponsorScreen(onDismiss = { showSponsorScreen = false })
+        }
+    }
+
+    // Handle license dialog
     if (showLicensesDialog) {
         Dialog(
             onDismissRequest = { showLicensesDialog = false },
@@ -229,59 +308,6 @@ fun SettingsContent(
                 }
             }
         }
-    }
-
-    // The contact-picker dialog sits on top of the settings content.
-    contactPickerState?.let { picker ->
-        ContactSelectionDialog(
-            title = when (picker.type) {
-                ContactPickerType.INCOMING -> stringResource(R.string.settings_select_contacts_incoming)
-                ContactPickerType.OUTGOING -> stringResource(R.string.settings_select_contacts_outgoing)
-            },
-            contacts = picker.contacts,
-            initialSelection = picker.selectedNumbers,
-            onConfirm = onConfirmContacts,
-            onDismiss = onDismissContacts
-        )
-    }
-}
-
-// ── Settings sections ──────────────────────────────────────────────────────────────────────
-
-/** Shows the app version, server version, clipboard buttons, and a GitHub link.
- */
-@Composable
-private fun AboutSection(versionString: String, onShowLicenses: () -> Unit) {
-    val context = LocalContext.current
-    val serverVersion = ScrcpyConfig.SCRCPY_VERSION
-
-    SettingsSection(title = stringResource(R.string.settings_section_about)) {
-        ListItem(
-            headlineContent = { Text(versionString) },
-            supportingContent = {
-                Text(stringResource(R.string.settings_scrcpy_server, serverVersion))
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-        )
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = { context.copyToClipboard("Scrcpy-Server Version", ScrcpyConfig.SCRCPY_VERSION) },
-                modifier = Modifier.weight(1f)
-            ) { Text(stringResource(R.string.settings_copy_version)) }
-            OutlinedButton(
-                onClick = onShowLicenses,
-                modifier = Modifier.weight(1f)
-            ) { Text(stringResource(R.string.settings_view_licenses)) }
-        }
-        Button(
-            onClick = { context.openGithub() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-        ) { Text(stringResource(R.string.settings_open_github)) }
     }
 }
 
@@ -342,26 +368,22 @@ private fun VisualSection(preferences: AppPreferences, updateTrigger: Int, actio
             label = stringResource(R.string.settings_language),
             selected = languageOptions.find { it.key == currentLanguage } ?: languageOptions.first(),
             options = languageOptions,
-            onOptionSelected = { actions.setAppLanguage(it.key) }
+            onOptionSelected = { actions.setAppLanguage(it.key) },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
 
         val themeOptions = AppPreferences.ThemeMode.entries.map { mode ->
-            val labelRes = when (mode) {
-                AppPreferences.ThemeMode.SYSTEM -> R.string.settings_theme_mode_system
-                AppPreferences.ThemeMode.LIGHT -> R.string.settings_theme_mode_light
-                AppPreferences.ThemeMode.DARK -> R.string.settings_theme_mode_dark
-            }
-            OptionItem(mode.key, stringResource(labelRes))
+            OptionItem(mode.key, stringResource(mode.displayNameResId))
         }
         val defaultThemeMode = AppPreferences.DefaultsValue.THEME_MODE.key
-        
         M3DropdownField(
             label    = stringResource(R.string.settings_theme_mode),
             selected = themeOptions.find { it.key == currentThemeMode.key } 
                 ?: themeOptions.find { it.key == defaultThemeMode } 
                 ?: themeOptions.first(),
             options  = themeOptions,
-            onOptionSelected = { actions.setThemeMode(AppPreferences.ThemeMode.fromKey(it.key)) }
+            onOptionSelected = { actions.setThemeMode(AppPreferences.ThemeMode.fromKey(it.key)) },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
         ToggleListItem(
             label           = stringResource(R.string.settings_dynamic_color),
@@ -402,11 +424,34 @@ private fun SecuritySection(preferences: AppPreferences, updateTrigger: Int, act
             description     = stringResource(R.string.settings_shizuku_auto_manage_desc)
         )
 
-        AnimatedVisibility(visible = autoManageShizuku,enter = fadeIn() + expandVertically(),exit = fadeOut() + shrinkVertically()) {
+        AnimatedVisibility(
+            visible = autoManageShizuku,
+            enter = fadeIn(animationSpec = tween(durationMillis = 500)) +
+                    expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        expandFrom = Alignment.Top
+                    ),
+            exit = fadeOut(animationSpec = tween(durationMillis = 450)) +
+                    shrinkVertically(
+                        animationSpec = tween(durationMillis = 450, easing = LinearOutSlowInEasing),
+                        shrinkTowards = Alignment.Top
+                    )
+        ) {
             Column {
                 var textState by remember(shizukuAuthKey) { mutableStateOf(shizukuAuthKey) }
-                val keyboardController = LocalSoftwareKeyboardController.current
                 var isFocused by remember { mutableStateOf(false) }
+
+                // Listen for textState updates
+                LaunchedEffect(textState) {
+                    // LaunchedEffect cancels the previous block and restarts when updating too quickly.
+                    delay(100)
+                    if (textState != shizukuAuthKey) {
+                        actions.setShizukuAuthKey(textState)
+                    }
+                }
 
                 OutlinedTextField(
                     value    = textState,
@@ -417,13 +462,22 @@ private fun SecuritySection(preferences: AppPreferences, updateTrigger: Int, act
                         .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
                         .onFocusChanged { isFocused = it.isFocused },
                     singleLine = true,
+                    isError = textState.isBlank(),
                     visualTransformation = if (isFocused) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Password, showKeyboardOnFocus = true),
-                    keyboardActions = KeyboardActions(onDone = {
-                        actions.setShizukuAuthKey(textState)
-                        keyboardController?.hide()
-                    })
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = null
+                        )
+                    }
                 )
+
+                if (textState.trim().isEmpty()) {
+                    WarningCard(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        message = stringResource(R.string.recording_shizuku_auth_key_missing))
+                }
 
                 ToggleListItem(
                     label           = stringResource(R.string.settings_shizuku_start_on_record),
@@ -468,6 +522,8 @@ private fun RecordingSection(
     
     // Evaluate these here so they are fetched on every recomposition.
     val recordingFolderLabel = remember(updateTrigger) { SafHelper.getFolderDisplayNameOrNull(context, preferences.getRecordingFolderUri()) }
+    val callDetectionMode = remember(updateTrigger) { preferences.getCallDetectionMode() }
+    val recordThirdPartyCalls = remember(updateTrigger) { preferences.isRecordThirdPartyCallsEnabled() }
     val fileNameFormat = remember(updateTrigger) { preferences.getFileNameTemplate() }
     val autoRecordIncoming = remember(updateTrigger) { preferences.isAutoRecordIncomingEnabled() }
     val autoRecordOutgoing = remember(updateTrigger) { preferences.isAutoRecordOutgoingEnabled() }
@@ -482,6 +538,45 @@ private fun RecordingSection(
     var showFileNameFormatDialog by remember { mutableStateOf(false) }
 
     SettingsSection(title = stringResource(R.string.settings_section_recording)) {
+        val detectionOptions = CallDetectionMode.entries.map { mode ->
+            OptionItem(
+                key = mode.key,
+                label = stringResource(mode.titleResId),
+                description = stringResource(mode.descriptionResId),
+                // Automatically grays out option if the user device's OS API level is incompatible
+                enabled = mode.isSupportedOnCurrentApi()
+            )
+        }
+
+        M3DropdownField(
+            label = stringResource(R.string.settings_call_detection_method),
+            selected = detectionOptions.find { it.key == callDetectionMode.key } ?: detectionOptions.first(),
+            options = detectionOptions,
+            onOptionSelected = { selectedItem ->
+                val chosenMode = CallDetectionMode.fromKey(selectedItem.key)
+                actions.setCallDetectionMode(chosenMode)
+            },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+        )
+
+        // These settings are only working with InCallService detection mode.
+        if (callDetectionMode == CallDetectionMode.InCallService) {
+            ToggleListItem(
+                label           = stringResource(R.string.settings_record_third_party_calls),
+                description     = stringResource(R.string.settings_record_third_party_calls_description),
+                checked         = recordThirdPartyCalls,
+                onCheckedChange = { actions.setRecordThirdPartyCalls(it) }
+            )
+        } else { // Show a warning for PhoneState broadcast method
+             WarningCard(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                title = stringResource(R.string.settings_call_detection_method_warning_title),
+                message = stringResource(R.string.call_detection_mode_phonestate_limited_support))
+        }
+
+
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), thickness = 0.5.dp)
+
         ListItem(
             modifier = Modifier.clickable { onSelectFolder() },
             headlineContent = { Text(stringResource(R.string.settings_recording_folder_label)) },
@@ -491,7 +586,13 @@ private fun RecordingSection(
                     color = MaterialTheme.colorScheme.primary
                 )
             },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            trailingContent = {
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null
+                )
+            },
         )
 
         ListItem(
@@ -501,6 +602,12 @@ private fun RecordingSection(
                 Text(
                     text = fileNameFormat,
                     color = MaterialTheme.colorScheme.primary
+                )
+            },
+            trailingContent = {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null
                 )
             },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent)
@@ -515,8 +622,19 @@ private fun RecordingSection(
         )
         AnimatedVisibility(
             visible = autoRecordIncoming,
-            enter   = fadeIn() +  expandVertically(),
-            exit    = fadeOut() + shrinkVertically()
+            enter = fadeIn(animationSpec = tween(durationMillis = 500)) +
+                    expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        expandFrom = Alignment.Top
+                    ),
+            exit = fadeOut(animationSpec = tween(durationMillis = 450)) +
+                    shrinkVertically(
+                        animationSpec = tween(durationMillis = 450, easing = LinearOutSlowInEasing),
+                        shrinkTowards = Alignment.Top
+                    )
         ) {
             Column {
                 ToggleListItem(
@@ -549,8 +667,19 @@ private fun RecordingSection(
         )
         AnimatedVisibility(
             visible = autoRecordOutgoing,
-            enter   = fadeIn() +  expandVertically(),
-            exit    = fadeOut() + shrinkVertically()
+            enter = fadeIn(animationSpec = tween(durationMillis = 500)) +
+                    expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        expandFrom = Alignment.Top
+                    ),
+            exit = fadeOut(animationSpec = tween(durationMillis = 450)) +
+                    shrinkVertically(
+                        animationSpec = tween(durationMillis = 450, easing = LinearOutSlowInEasing),
+                        shrinkTowards = Alignment.Top
+                    )
         ) {
             Column {
                 ToggleListItem(
@@ -572,6 +701,7 @@ private fun RecordingSection(
     if (showFileNameFormatDialog) {
         FileNameFormatDialog(
             initialFormat = fileNameFormat,
+            activeMode = preferences.getCallDetectionMode(),
             onConfirm = { format ->
                 actions.setFileNameTemplate(format)
                 showFileNameFormatDialog = false
@@ -625,17 +755,9 @@ private fun AudioSection(preferences: AppPreferences, updateTrigger: Int, action
             label    = stringResource(R.string.settings_audio_source),
             selected = selectedAudio,
             options  = audioSourceOptions,
-            onOptionSelected = { actions.setAudioSource(it.key) }
+            onOptionSelected = { actions.setAudioSource(it.key) },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
-        // Show the description of the currently selected audio source below the dropdown.
-        selectedAudio.description?.let { desc ->
-            Text(
-                text     = desc,
-                style    = MaterialTheme.typography.labelSmall,
-                color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-            )
-        }
 
         val codecOptions = ScrcpyAudioCodec.entries
             .map { OptionItem(it.cliKey, stringResource(it.titleResId)) }
@@ -646,6 +768,7 @@ private fun AudioSection(preferences: AppPreferences, updateTrigger: Int, action
                 ?: codecOptions.first(),
             options  = codecOptions,
             onOptionSelected = { actions.setAudioCodec(it.key) },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
         // Show the AAC recommendation if the user has issues.
         // LocalInspectionMode.current is true in Android Preview, it prevents a preview compilation error.
@@ -666,7 +789,8 @@ private fun AudioSection(preferences: AppPreferences, updateTrigger: Int, action
             selected = bitrateOptions.find { it.key == savedBitRate.toString() } 
                 ?: bitrateOptions.first(), // fallback gracefully if bitrate was removed from expected options
             options  = bitrateOptions,
-            onOptionSelected = { actions.setAudioBitRate(it.key.toInt()) }
+            onOptionSelected = { actions.setAudioBitRate(it.key.toInt()) },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
     }
 }
@@ -693,61 +817,81 @@ private fun DebugSection(preferences: AppPreferences, updateTrigger: Int, action
             description     = if (!isLoggingEnabled) stringResource(R.string.settings_debug_logging_enabled_description) else null
         )
 
-        if (isLoggingEnabled) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Text(
-                    text = stringResource(R.string.settings_debug_logging_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                Text(
-                    text = stringResource(R.string.settings_debug_logging_steps),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = stringResource(R.string.settings_debug_logging_step_warning),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
-
-                if (isDebugEnabled) {
-                    Spacer(modifier = Modifier.height(5.dp))
+        AnimatedVisibility(
+            visible = isLoggingEnabled,
+            enter = fadeIn(animationSpec = tween(400)) +
+                    expandVertically(
+                        animationSpec = tween(400, easing = LinearOutSlowInEasing),
+                        expandFrom = Alignment.Top
+                    ),
+            exit = fadeOut(animationSpec = tween(300)) +
+                    shrinkVertically(
+                        animationSpec = tween(300, easing = LinearOutSlowInEasing),
+                        shrinkTowards = Alignment.Top
+                    )
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
                     Text(
-                        text = stringResource(R.string.settings_debug_logging_step_warning_no_redaction),
+                        text = stringResource(R.string.settings_debug_logging_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_debug_logging_steps),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = stringResource(R.string.settings_debug_logging_step_warning),
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.error
                     )
-                }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = onExportLogs,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(stringResource(R.string.settings_debug_logging_generate_report))
+                    if (isDebugEnabled) {
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = stringResource(R.string.settings_debug_logging_step_warning_no_redaction),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
 
-                    OutlinedButton(
-                        onClick = { context.openGithubReportIssue()},
-                        modifier = Modifier.weight(1f)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(stringResource(R.string.settings_debug_logging_report_on_github))
+                        Button(
+                            onClick = onExportLogs,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.settings_debug_logging_generate_report))
+                        }
+
+                        OutlinedButton(
+                            onClick = { context.openGithubReportIssue()},
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(stringResource(R.string.settings_debug_logging_report_on_github))
+                        }
                     }
                 }
+
             }
         }
-
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), thickness = 0.5.dp)
 
         ToggleListItem(
@@ -756,36 +900,49 @@ private fun DebugSection(preferences: AppPreferences, updateTrigger: Int, action
             onCheckedChange = { actions.setDebugEnabled(it) },
             description = stringResource(R.string.settings_debug_mode_description)
         )
-        if (isDebugEnabled) {
+
+        AnimatedVisibility(
+            visible = isDebugEnabled,
+            enter = fadeIn(animationSpec = tween(400)) +
+                    expandVertically(
+                        animationSpec = tween(400, easing = LinearOutSlowInEasing),
+                        expandFrom = Alignment.Top
+                    ),
+            exit = fadeOut(animationSpec = tween(300)) +
+                    shrinkVertically(
+                        animationSpec = tween(300, easing = LinearOutSlowInEasing),
+                        shrinkTowards = Alignment.Top
+                    )
+        ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 var textState by remember(debugCallerNumber) { mutableStateOf(debugCallerNumber) }
                 val allowedChars = "^[0-9+-]*$".toRegex()
-                val keyboardController = LocalSoftwareKeyboardController.current
+
+                LaunchedEffect(textState) {
+                    delay(100) // Cancel current if new textState comes in within x time
+                    if (textState != debugCallerNumber) {
+                        actions.setDebugCallerNumber(textState)
+                    }
+                }
 
                 OutlinedTextField(
                     value    = textState,
                     onValueChange = { newValue ->
                         if (newValue.matches(allowedChars)) {
                             textState = newValue
-                            // We aggressively update the setting on every change so that
-                            // the test buttons always use the latest number.
-                            actions.setDebugCallerNumber(newValue)
                         }
                     },
                     label    = { Text(stringResource(R.string.settings_debug_caller_number)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Phone, showKeyboardOnFocus = true),
-                    keyboardActions = KeyboardActions(onDone = {
-                        actions.setDebugCallerNumber(textState)
-                        keyboardController?.hide()
-                    })
                 )
                 DebugActionGrid(actions)
             }
+
         }
     }
 }
@@ -871,8 +1028,19 @@ private fun IgnoreContactsOptions(
                 )
             }
         }
-
-        if (selectedEnum == AppPreferences.IgnoreContactsMode.SELECTED) {
+        AnimatedVisibility(
+            visible = selectedEnum == AppPreferences.IgnoreContactsMode.SELECTED,
+            enter = fadeIn(animationSpec = tween(400)) +
+                    expandVertically(
+                        animationSpec = tween(400, easing = LinearOutSlowInEasing),
+                        expandFrom = Alignment.Top
+                    ),
+            exit = fadeOut(animationSpec = tween(300)) +
+                    shrinkVertically(
+                        animationSpec = tween(300, easing = LinearOutSlowInEasing),
+                        shrinkTowards = Alignment.Top
+                    )
+        ) {
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick  = onSelectContacts,
@@ -881,6 +1049,62 @@ private fun IgnoreContactsOptions(
                     .fillMaxWidth(),
                 shape = MaterialTheme.shapes.small
             ) { Text(stringResource(R.string.settings_select_contacts, selectedCount)) }
+        }
+    }
+}
+
+/**
+ * A red warning card used to highlight important information or potential issues in the settings.
+ * @param message The main warning message to display.
+ * @param modifier Modifier for styling the card.
+ * @param title An optional title for the warning, shown in bold red text above the main message.
+ */
+@Composable
+fun WarningCard(
+    message: String,
+    modifier: Modifier = Modifier,
+    title: String? = null
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+            contentColor = MaterialTheme.colorScheme.onErrorContainer
+        ),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            // Warning Icon aligned to the top of text lines
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = "Warning Indicator",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Text Content Block
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                if (title != null) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 }
@@ -918,7 +1142,7 @@ private fun DebugActionGrid(actions: SettingsActions) {
 @Preview(showBackground = true)
 @Composable
 private fun SettingsScreenPreview() {
-    MaterialTheme {
+    ShizucallrecorderTheme(darkTheme = false, dynamicColor = false) {
         val mockContext = LocalContext.current
         val dummyPreferences = AppPreferences(mockContext)
         val dummyActions = object : SettingsActions {
@@ -948,6 +1172,8 @@ private fun SettingsScreenPreview() {
             override fun setShizukuKeepAliveEnabled(enabled: Boolean) {}
             override fun setShizukuAuthKey(key: String) {}
             override fun setFileNameTemplate(template: String) {}
+            override fun setCallDetectionMode(mode: CallDetectionMode) {}
+            override fun setRecordThirdPartyCalls(enabled: Boolean) {}
         }
 
         // File name template selection dialog

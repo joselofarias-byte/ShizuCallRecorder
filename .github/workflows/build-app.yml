@@ -27,10 +27,6 @@ name: Build App
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release Version (SemVer, e.g., 1.0.0)'
-        required: true
-        type: string
       release_type:
         description: 'Release Type'
         required: true
@@ -59,6 +55,7 @@ jobs:
     outputs:
       FINAL_APK_NAME: ${{ steps.set-output.outputs.FINAL_APK_NAME }}
       BUILD_TYPE: ${{ steps.set-output.outputs.BUILD_TYPE }}
+      VERSION: ${{ steps.get-version.outputs.VERSION }}
     
     steps:
       - name: Checkout Repository
@@ -75,10 +72,29 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          validate-wrappers: true # Verify Gradle wrapper integrity to prevent supply chain attacks
+          validate-wrappers: true # Verify Gradle wrapper integrity to prevent supply chain attacks from bad-actor wrapper file in the git repo
           cache-provider: basic # DO NOT REMOVE, gradle V6 made controversial OPT-IN BY DEFAULT NEW TERMS FOR THEIR NEW PROPRIETARY "ADVANCED CACHING". basic is previous MIT FOSS caching variant with no terms.
+          gradle-version: '9.4.1' # Replicate the same version as gradle-wrapper.properties used by Android Studio
           # In the weird case where we could run this CI on a PRs from forks, cache is read-only to prevents cache poisoning.
           cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+
+      - name: Generate Missing Gradle Wrapper Scripts
+        env:
+          SKIP_SIGNING: true # Prevent build.gradle.kts from throwing error due to missing signing info
+        run: gradle wrapper
+
+      - name: Extract Version via Gradle Task
+        id: get-version
+        env:
+          SKIP_SIGNING: true
+        run: |
+          # Run the task to generate the file
+          ./gradlew writeVersionForCi
+          # Read the exact string from the generated file
+          VERSION=$(cat app/build/outputs/version.txt)
+          # Export it to GitHub Actions outputs
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
       
       # Determine build type and set outputs of the build job
       - name: Set Build Configuration
@@ -86,24 +102,28 @@ jobs:
         run: |
           if [ "${{ inputs.release_type }}" = "Debug Asset" ]; then
             echo "BUILD_TYPE=debug" >> $GITHUB_OUTPUT
-            echo "FINAL_APK_NAME=ShizuCallRecorder-${{ inputs.version }}-debug.apk" >> $GITHUB_OUTPUT
+            echo "FINAL_APK_NAME=ShizuCallRecorder-${{ steps.get-version.outputs.VERSION }}-debug.apk" >> $GITHUB_OUTPUT
           else
             echo "BUILD_TYPE=release" >> $GITHUB_OUTPUT
-            echo "FINAL_APK_NAME=ShizuCallRecorder-${{ inputs.version }}.apk" >> $GITHUB_OUTPUT
+            echo "FINAL_APK_NAME=ShizuCallRecorder-${{ steps.get-version.outputs.VERSION }}.apk" >> $GITHUB_OUTPUT
           fi
       
       # Set up signing for release builds
       # Signing keystore is stored as a base64-encoded secret
       - name: Decode Keystore
-        if: ${{ steps.set-output.outputs.BUILD_TYPE != 'debug' }}
         run: |
           # Decode the keystore from base64 secret
           echo "${{ secrets.SIGNING_KEYSTORE }}" | base64 -d > app/release-keystore.jks
-          
+        
       # Build Debug APK (for Debug Asset type)
       - name: Build Debug APK
         if: ${{ steps.set-output.outputs.BUILD_TYPE == 'debug' }}
-        run: ./gradlew assembleDebug -PversionName=${{ inputs.version }} -PversionCode=${{ github.run_number }} -PciBuildNumber=${{ github.run_id }} --no-daemon --stacktrace
+        env:
+          KEYSTORE_FILE: release-keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleDebug -PciBuildNumber=${{ github.run_id }} --stacktrace
 
       # Build Release APK (for Release/Pre-Release types)
       # Uses signing configuration from secrets
@@ -114,24 +134,25 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease -PversionName=${{ inputs.version }} -PversionCode=${{ github.run_number }} -PciBuildNumber=${{ github.run_id }} --no-daemon --stacktrace
+        run: ./gradlew assembleRelease -PciBuildNumber=${{ github.run_id }} --stacktrace
 
       # Rename and move APK with version for clarity
       - name: Prepare APK Artifact
         run: |
+          echo ----listing APK output directory for debugging...
           tree app/build/outputs/apk/
-          echo ----
+          echo ----moving files...
           if [ "${{ steps.set-output.outputs.BUILD_TYPE }}" = "debug" ]; then
             mv app/build/outputs/apk/debug/app-debug.apk \
-               app/build/outputs/apk/ShizuCallRecorder-${{ inputs.version }}-debug.apk
+               app/build/outputs/apk/ShizuCallRecorder-${{ steps.get-version.outputs.VERSION }}-debug.apk
           else
             mv app/build/outputs/apk/release/app-release.apk \
-               app/build/outputs/apk/ShizuCallRecorder-${{ inputs.version }}.apk
+               app/build/outputs/apk/ShizuCallRecorder-${{ steps.get-version.outputs.VERSION }}.apk
           fi
       
       # Clean up signing keystore (security best practice)
       - name: Cleanup Signing Files
-        if: ${{ always() && steps.set-output.outputs.BUILD_TYPE != 'debug' }}
+        if: ${{ always()}}
         run: rm -f app/release-keystore.jks
       
       # Upload the APK as a build artifact for the release job
@@ -182,6 +203,8 @@ jobs:
       - name: Create Draft Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.build.outputs.VERSION }}
+          FINAL_APK_NAME: ${{ needs.build.outputs.FINAL_APK_NAME }}
         run: |
           # Determine if this is a pre-release
           PRERELEASE_FLAG=""
@@ -192,12 +215,12 @@ jobs:
           # Create the draft release with the APK attached
           # --draft: Release is not published until manually approved
           # --generate-notes: Auto-generate release notes from commits
-          gh release create "v${{ inputs.version }}" \
+          gh release create "v${RELEASE_VERSION}" \
             --draft \
-            --title "ShizuCallRecorder v${{ inputs.version }}" \
+            --title "ShizuCallRecorder v${RELEASE_VERSION}" \
             --generate-notes \
             $PRERELEASE_FLAG \
-            ./release-assets/${{ needs.build.outputs.FINAL_APK_NAME }}
+            ./release-assets/${FINAL_APK_NAME}
           
-          echo "Draft release v${{ inputs.version }} created successfully!"
+          echo "Draft release v${FINAL_APK_NAME} created successfully!"
           echo "Please review and publish the release manually."

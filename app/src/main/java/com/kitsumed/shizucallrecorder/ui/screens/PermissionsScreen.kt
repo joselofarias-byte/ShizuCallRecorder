@@ -14,6 +14,7 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,7 +36,10 @@ import com.kitsumed.shizucallrecorder.R
 import com.kitsumed.shizucallrecorder.data.AppPreferences
 import com.kitsumed.shizucallrecorder.integrations.shizuku.ShizukuConnectionManager
 import com.kitsumed.shizucallrecorder.onboarding.OnboardingStatus
+import com.kitsumed.shizucallrecorder.services.callDetection.CallDetectionMode
 import com.kitsumed.shizucallrecorder.system.openAppSettings
+import com.kitsumed.shizucallrecorder.ui.common.M3DropdownField
+import com.kitsumed.shizucallrecorder.ui.common.OptionItem
 import com.kitsumed.shizucallrecorder.ui.theme.ShizucallrecorderTheme
 import com.kitsumed.shizucallrecorder.ui.viewmodels.PermissionsViewModel
 import kotlin.system.exitProcess
@@ -93,7 +97,8 @@ fun PermissionsScreen(
         if (ShizukuConnectionManager.isAvailable()) {
             // If Shizuku server is running, just ensure we have all required permissions on the Shell app level. If not, then the app won't work.
             val requiredPermissions = listOf(
-                Manifest.permission.CAPTURE_AUDIO_OUTPUT
+                Manifest.permission.CAPTURE_AUDIO_OUTPUT,
+                "android.permission.MANAGE_APP_OPS_MODES" // Manifest.permission.MANAGE_APP_OPS_MODES is hidden in public API
             )
 
             val missingPermissions = requiredPermissions.filter {
@@ -111,7 +116,7 @@ fun PermissionsScreen(
                     .setMessage(dialogMessage)
                     .setIcon(android.R.drawable.ic_dialog_alert)
                     .setCancelable(false)
-                    .setPositiveButton("Exit") { _, _ ->
+                    .setPositiveButton(stringResource(R.string.general_ok)) { _, _ ->
                         exitProcess(0)
                     }.show()
             }
@@ -127,6 +132,10 @@ fun PermissionsScreen(
                 requestRuntimePermission = { permission -> permissionRequestLauncher.launch(permission) },
                 launchFolderPicker = { folderPickerLauncher.launch(null) },
             )
+        },
+        onCallDetectionModeChanged = { newMode ->
+            viewModel.onCallDetectionModeChanged(newMode)
+            onPermissionGranted() // Refresh the UI after changing the mode
         },
         modifier = modifier
     )
@@ -152,10 +161,13 @@ fun PermissionsScreen(
 fun PermissionsContent(
     status: OnboardingStatus.Status,
     onGrantAccessButtonClick: () -> Unit,
+    onCallDetectionModeChanged: (CallDetectionMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier.navigationBarsPadding().fillMaxSize(),
+        modifier = modifier
+            .navigationBarsPadding()
+            .fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
         Column(
@@ -181,7 +193,9 @@ fun PermissionsContent(
 
             // Scrollable permission cards
             Column(
-                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 PermissionCard(
@@ -195,21 +209,51 @@ fun PermissionsContent(
                     }
                 )
 
-                val permissions = listOf(
+                val globalPermissions = listOf(
                     Triple(stringResource(R.string.permission_notifications_label), stringResource(R.string.permission_notifications_description), status.notificationsGranted to Icons.Default.QuestionAnswer),
                     Triple(stringResource(R.string.permission_contacts_label), stringResource(R.string.permission_contacts_description), status.contactsGranted to Icons.Default.RecentActors),
-                    Triple(stringResource(R.string.permission_phone_state_label), stringResource(R.string.permission_phone_state_description), status.phoneStateGranted to Icons.Default.Phone),
-                    Triple(stringResource(R.string.permission_call_log_label), stringResource(R.string.permission_call_log_description), status.callLogGranted to Icons.Default.History),
                     Triple(stringResource(R.string.permission_battery_label), stringResource(R.string.permission_battery_description), status.batteryExempted to Icons.Default.BatterySaver),
                     Triple(stringResource(R.string.settings_recording_folder_label), stringResource(R.string.permission_storage_description), status.storageSelected to Icons.Default.Folder)
                 )
 
-                permissions.forEach { (label, desc, grantInfo) ->
+                // How global permissions
+                globalPermissions.forEach { (label, desc, grantInfo) ->
                     PermissionCard(
                         label = label,
                         description = desc,
                         granted = grantInfo.first,
                         iconOverride = grantInfo.second
+                    )
+                }
+
+                HorizontalDivider() // Call detection specific permissions section
+
+                val detectionOptions = CallDetectionMode.entries.map { mode ->
+                    OptionItem(
+                        key = mode.name,
+                        label = stringResource(mode.titleResId),
+                        description = stringResource(mode.descriptionResId),
+                        enabled = mode.isSupportedOnCurrentApi()
+                    )
+                }
+
+                M3DropdownField(
+                    label = stringResource(R.string.settings_call_detection_method),
+                    selected = detectionOptions.find { it.key == status.callDetectionMode.name } ?: detectionOptions.first(),
+                    options = detectionOptions,
+                    onOptionSelected = { selectedItem ->
+                        onCallDetectionModeChanged(CallDetectionMode.valueOf(selectedItem.key))
+                    }
+                )
+
+                // Show the required permissions for the selected call detection mode
+                status.callDetectionMode.requiredPermissions.forEach { currentPermission ->
+                    val isGranted = status.callDetectionModeGrantedPermissions.contains(currentPermission)
+                    PermissionCard(
+                        label = stringResource(currentPermission.titleResId),
+                        description = stringResource(currentPermission.descriptionResId),
+                        granted = isGranted,
+                        iconOverride = currentPermission.icon
                     )
                 }
             }
@@ -243,10 +287,26 @@ private fun PermissionCard(
     statusOverride: String? = null,
     iconOverride: ImageVector? = null
 ) {
+    // Animate the background container color smoothly
     val containerColor by animateColorAsState(
-        targetValue = if (granted) MaterialTheme.colorScheme.surfaceContainerHigh
-        else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
-        label = "cardColor"
+        targetValue = if (granted) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+        },
+        animationSpec = tween(durationMillis = 500),
+        label = "cardBackgroundColor"
+    )
+
+    // Animate the status/icon color
+    val statusColor by animateColorAsState(
+        targetValue = if (granted) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.error
+        },
+        animationSpec = tween(durationMillis = 600),
+        label = "cardStatusColor"
     )
 
     ElevatedCard(
@@ -268,19 +328,20 @@ private fun PermissionCard(
                     Spacer(modifier = Modifier.weight(1f))
 
                     Icon(
-                        if (granted) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
-                        null, Modifier.size(16.dp),
-                        if (!granted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = statusColor // Used the animated color here
                     )
                     Text(
                         text = statusOverride ?: if (granted) stringResource(R.string.permissions_status_granted) else stringResource(R.string.permissions_status_required),
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (!granted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        color = statusColor, // Used the animated color here
                         fontWeight = FontWeight.Bold
                     )
                 }
             },
-            supportingContent = { Text(description,  style = MaterialTheme.typography.bodySmall) },
+            supportingContent = { Text(description, style = MaterialTheme.typography.bodySmall) },
         )
     }
 }
@@ -291,17 +352,18 @@ private fun PermissionsScreenPreview() {
     ShizucallrecorderTheme(darkTheme = false) {
         PermissionsContent(
             status = OnboardingStatus.Status(
-                disclaimerAccepted       = true,
-                notificationsGranted     = false,
-                contactsGranted          = true,
-                phoneStateGranted        = false,
-                callLogGranted           = false,
-                batteryExempted          = false,
-                storageSelected          = false,
-                shizukuRunning           = false,
-                shizukuPermissionGranted = false
+                disclaimerAccepted = true,
+                notificationsGranted = false,
+                contactsGranted = true,
+                batteryExempted = false,
+                storageSelected = false,
+                shizukuRunning = false,
+                shizukuPermissionGranted = false,
+                callDetectionMode = CallDetectionMode.PhoneState,
+                callDetectionModeGrantedPermissions = emptySet()
             ),
-            onGrantAccessButtonClick = {}
+            onGrantAccessButtonClick = {},
+            onCallDetectionModeChanged = { },
         )
     }
 }

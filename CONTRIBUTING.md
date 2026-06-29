@@ -1,3 +1,4 @@
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/kitsumed?style=flat&logo=github-sponsors&label=Consider%20Supporting%20My%20Work%2C%20Become%20a%20Sponsor)](https://github.com/sponsors/kitsumed)
 # Contributing
 
 Hi! Thank you for considering contributing to this project.  

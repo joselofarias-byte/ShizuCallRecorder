@@ -17,7 +17,6 @@
     <string name="general_cancel">Cancel</string>
     <string name="general_settings">Settings</string>
     <string name="general_licenses">Licenses</string>
-    <string name="general_copied_to_clipboard">Copied to clipboard</string>
     <string name="general_record">Record</string>
     <string name="general_pause">Pause</string>
     <string name="general_resume">Resume</string>
@@ -30,6 +29,20 @@
     <!-- ========================================== -->
     <!-- UI SECTIONS                                -->
     <!-- ========================================== -->
+
+    <!-- Recordings Library -->
+    <string name="general_back">Back</string>
+    <string name="recordings_open_library">Recordings</string>
+    <string name="recordings_title">Recordings</string>
+    <string name="recordings_refresh">Refresh</string>
+    <string name="recordings_empty_title">No recordings found</string>
+    <string name="recordings_empty_body">Select a recording folder and record a call first.</string>
+    <string name="recordings_folder_missing">Select a recording folder in Settings first.</string>
+    <string name="playback_title">Playback</string>
+    <string name="playback_play">Play</string>
+    <string name="playback_seek_back">-5s</string>
+    <string name="playback_seek_forward">+5s</string>
+    <string name="playback_duration_unknown">--:--</string>
 
     <!-- Disclaimer Screen -->
     <string name="disclaimer_title">Welcome to ShizuCallRecorder</string>
@@ -57,7 +70,7 @@
         APPLICATION BEHAVIOR\n
         Due to the evolving Android ecosystem and varying hardware (OEMs), this software is subject to non-deterministic behavior:\n\n
         * Concurrent Calls: The app may fail to detect transitions (e.g., while in a call, a second incoming call arrives, or switching between held calls). In these scenarios, the application may continue to record audio into a single continuous file without separate notifications or new notifications prompts for subsequent callers.\n\n
-        * Filter Logic Limitations: Due to Android privacy-driven restrictions on real-time phone number access, the app relies on fetching a deprecated value when it receives a phone state updates. We are not aware of other rational workaround for standard apps (alternatives are restrictive or incompatible). This initial check is used to decide whether to automatically record based on your settings. In cases where we receive the value too late, receive invalid data, or receive no data, the application is likely to consider the call as anonymous in its decision process. This should not affect the final file name since we can read the device call logs after the call ended.\n\n
+        * Filter Logic Limitations: Due to Android privacy-driven restrictions on real-time phone number access, the app may rely, depending on the call detection mode, on fetching deprecated or unstable values when it receives a phone state updates. These initial check could be used to decide whether to automatically record based on your settings. In cases where we receive the value too late, receive invalid data, or receive no data, the application is likely to consider the call as anonymous in its decision process.\n\n
         * Unforeseen Failures: Future OS updates, bugs, design choices in the app, or undocumented system behaviors may cause the app to start and/or continue recording, or fail, in a unexpected manner.\n\n
 
         USER AWARENESS\n
@@ -68,6 +81,31 @@
     <string name="disclaimer_checkbox_label">I have read the disclaimer and understand the legal requirements, responsibilities, and technical limitations of this software.</string>
     <string name="disclaimer_wait">Wait %1$ds</string>
     <string name="disclaimer_must_read">You must read the disclaimer.</string>
+
+    <!-- Sponsor Screen -->
+    <string name="sponsor_title">Support the Project</string>
+    <string name="sponsor_body_title">Hi, I\'m kitsumed (Med)! 👋</string>
+    <string name="sponsor_body">I\'ve been into technologies and computers since I was young. Most of my projects come from finding solutions for my own physical or mental disabilities, while others are just random sparks of inspiration.\n\nShizuCallRecorder was born out of a personal need related to one of my disabilities. For several years, I searched for a free and open-source (FOSS) call recording app that would work on non-rooted devices, but I couldn\'t find one. There was none. So, I decided to create my own, and made it public.\n\nI spend a lot of my free time learning, building, and maintaining open-source software. Your support directly helps me in my daily life financially and motivates me to keep creating high-quality tools for the community.\n\nI believe in keeping my apps free of aggressive ads and privacy-invasive tracking. If my tools have been useful in your daily life, please consider supporting!</string>
+    <string name="sponsor_days_used">You\'ve been using ShizuCallRecorder for %1$d days!</string>
+
+    <string name="sponsor_way_to_help">Ways you can help:</string>
+    <string name="sponsor_way_github_sponsor_title">Become a GitHub Sponsor</string>
+    <string name="sponsor_way_github_sponsor_description">Earn the Public Sponsor achievement, get your profile on my page, and sustain myself and my open-source work financially.</string>
+    <string name="sponsor_way_github_star_title">Star it on GitHub</string>
+    <string name="sponsor_way_github_star_description">Boost the project\'s visibility so others can find it.</string>
+    <string name="sponsor_way_contribute_title">Contribute</string>
+    <string name="sponsor_way_contribute_description">Help with code, bug reports, or translations.</string>
+    <string name="sponsor_way_share_title">Share the App</string>
+    <string name="sponsor_way_share_description">Tell your friends or community about ShizuCallRecorder.</string>
+
+    <string name="sponsor_github_sponsor_button">Sponsor on GitHub</string>
+    <string name="sponsor_github_star_button">Star Repo</string>
+    <string name="sponsor_maybe_later_button">Maybe Later</string>
+
+    <string name="sponsor_notification_body">This project is free, open-source, and contains zero ads. If this tool helped you in your daily life, consider checking out ways to support the project development!</string>
+    <string name="sponsor_notification_action">View Support Options</string>
+    <string name="sponsor_notification_call_to_action_title">Enjoying ShizuCallRecorder?</string>
+    <string name="sponsor_notification_call_to_action">We need your help!</string>
 
     <!-- Permissions Screen -->
     <string name="permissions_title">Permissions Setup</string>
@@ -87,6 +125,9 @@
 
     <string name="permission_call_log_label">Call Log</string>
     <string name="permission_call_log_description">Required so we receive the unredacted phone number on phone state events.</string>
+
+    <string name="permission_manage_ongoing_calls_label">Manage Ongoing Calls</string>
+    <string name="permission_manage_ongoing_calls_description">AppOps permission automatically granted with Shizuku. Required to detect calls with InCallService.</string>
 
     <string name="permission_battery_label">Battery Optimization</string>
     <string name="permission_battery_description">Keeps the app alive when it needs and allow to bypass possible background startup limitations.</string>
@@ -117,17 +158,35 @@
     <string name="settings_shizuku_keep_alive_desc">Do not send the stop intent</string>
 
     <!-- Settings Screen: Recording Section -->
+    <string name="settings_call_detection_method">Call Detection Method</string>
+    <string name="settings_call_detection_method_warning_title">Limited Support Notice</string>
+    <string name="call_detection_mode_phonestate_title" translatable="false">Phone State</string>
+    <string name="call_detection_mode_phonestate_description">Use the legacy phone state broadcast with deprecated fields. This mode is a very prone to race conditions and give us a limited amount of informations.</string>
+    <string name="call_detection_mode_phonestate_limited_support">This call detection method is unreliable. We retrieve a deprecated value when receiving phone state updates, and the detection logic is prone to race conditions. We also cannot differentiate between carrier calls and third-party calls. However, you can work around this limitation by ignoring anonymous calls.</string>
+    <string name="call_detection_mode_incallservice_title" translatable="false">InCallService</string>
+    <string name="call_detection_mode_incallservice_description">Use the modern InCallService API. This mode is more efficient and should provide better detection with a lot of informations.</string>
+
+    <string name="settings_record_third_party_calls">Record third-party apps</string>
+    <string name="settings_record_third_party_calls_description">Record calls from third-party that integrate with Android telecom system. May result in silent or one-sided recordings.</string>
+
     <string name="settings_tap_to_select_folder">Tap to select folder...</string>
     <string name="settings_recording_folder_label">Recording Folder</string>
 
     <string name="settings_file_name_template">File Name Template</string>
-    <string name="settings_file_name_template_placeholders">Placeholders:</string>
+    <string name="settings_file_name_template_placeholders">Placeholders for %s :</string>
     <string name="settings_file_name_template_placeholders_preview">Preview: %1$s</string>
     <string name="placeholder_date_desc">The current date and time</string>
+    <string name="placeholder_date_year_desc">The current year (e.g. 2026)</string>
+    <string name="placeholder_date_month_desc">The current month, zero-padded (01-12)</string>
+    <string name="placeholder_date_day_desc">The current day of the month, zero-padded (01-31)</string>
+    <string name="placeholder_date_hours_desc">The current hour, 24-hour and zero-padded (00-23)</string>
+    <string name="placeholder_date_minutes_desc">The current minutes, zero-padded (00-59)</string>
+    <string name="placeholder_date_seconds_desc">The current seconds, zero-padded (00-59)</string>
     <string name="placeholder_direction_desc">The call direction (in/out)</string>
     <string name="placeholder_phone_number_desc">The phone number</string>
-    <string name="placeholder_contact_name_desc">The contact name, if available</string>
+    <string name="placeholder_caller_name_desc">The name of the caller, look at the contacts list first, fallback to telecom CallerID when available</string>
     <string name="placeholder_cross_country_desc">Indicates if the call is cross-country (true/false)</string>
+    <string name="placeholder_package_name_desc">The name or package name of the app that initiated the call.</string>
 
     <string name="settings_auto_record_incoming">Automatically record incoming calls</string>
     <string name="settings_auto_record_outgoing">Automatically record outgoing calls</string>
@@ -220,10 +279,9 @@
     <string name="settings_debug_action_idle" translatable="false">Idle / End</string>
 
     <!-- Settings Screen: About/Server Section -->
-    <string name="settings_copy_version">Copy Version</string>
     <string name="settings_view_licenses">View Licenses</string>
     <string name="settings_scrcpy_server" translatable="false">Scrcpy-Server: %1$s</string>
-    <string name="settings_open_github">Open GitHub Repository</string>
+    <string name="settings_open_github_Wiki">Open Wiki</string>
 
     <!-- ContactSelection Dialog -->
     <string name="contact_search_hint">Search by name or number...</string>

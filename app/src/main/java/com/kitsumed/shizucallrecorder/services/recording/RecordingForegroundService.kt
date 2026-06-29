@@ -12,17 +12,17 @@ import android.app.Notification
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.content.pm.ServiceInfo
 import android.provider.CallLog
 import androidx.documentfile.provider.DocumentFile
-import com.kitsumed.shizucallrecorder.integrations.shizuku.ShizukuConnectionManager
 import com.kitsumed.shizucallrecorder.IShellService
-import com.kitsumed.shizucallrecorder.data.AppPreferences
 import com.kitsumed.shizucallrecorder.R
-import com.kitsumed.shizucallrecorder.data.recordings.RecordingDirection
-import com.kitsumed.shizucallrecorder.data.recordings.RecordingMetadata
+import com.kitsumed.shizucallrecorder.data.AppPreferences
+import com.kitsumed.shizucallrecorder.data.call.CallDirection
+import com.kitsumed.shizucallrecorder.data.call.EnrichedCallData
+import com.kitsumed.shizucallrecorder.integrations.shizuku.ShizukuConnectionManager
 import com.kitsumed.shizucallrecorder.utils.AppLogger
 import com.kitsumed.shizucallrecorder.utils.PhoneNumberManager
 import com.kitsumed.shizucallrecorder.utils.RecordingFileNameFormatter
@@ -160,12 +160,12 @@ class RecordingForegroundService : Service() {
         if (intent != null) {
             val newMetadata = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(
-                    RecordingMetadata.EXTRA_METADATA,
-                    RecordingMetadata::class.java
+                    EnrichedCallData.EXTRA_METADATA,
+                    EnrichedCallData::class.java
                 )
             } else {
                 @Suppress("DEPRECATION")
-                intent.getParcelableExtra(RecordingMetadata.EXTRA_METADATA)
+                intent.getParcelableExtra(EnrichedCallData.EXTRA_METADATA)
             }
             if (newMetadata != null) {
                 currentMeta = newMetadata
@@ -296,7 +296,7 @@ class RecordingForegroundService : Service() {
      * Creates a new [AudioRecordingEngine], starts the I/O pipeline, updates the visible notification,
      * and handles fatal [PipelineInitializationException].
      */
-    private fun startNewRecordingSession(service: IShellService, metadata: RecordingMetadata) {
+    private fun startNewRecordingSession(service: IShellService, metadata: EnrichedCallData) {
         if (hasSession) {
             AppLogger.w(TAG, "startNewRecordingSession() called while already active – ignoring")
             return
@@ -347,14 +347,13 @@ class RecordingForegroundService : Service() {
 
         // If the initialization metadata do not contain a phone number, we attempt to query the call log as a fallback.
         // TODO: Remove this fallback logic once we have a more reliable way to get phone number (using Shizuku and hidden api)
-        if (originalMetadata != null && originalMetadata.rawPhoneNumber.isNullOrBlank() && uriToRename != null) {
+        if (originalMetadata != null && originalMetadata.normalisedPhoneNumber.isNullOrBlank() && uriToRename != null) {
             AppLogger.d(TAG, "Recording ended without a phone number. Querying CallLog as a fallback to get more information...")
             // We use GlobalScope/IO because the Service's scope might be cancelled immediately in onDestroy.
             // Android gives the process some time to live, so this is safe for a few seconds.
             CoroutineScope(Dispatchers.IO).launch {
-                val rawNumber =
-                    tryGetFinalNumberFromLog(applicationContext, originalMetadata.direction)
-                val sanitizedRaw = PhoneNumberManager.sanitizeOemNumber(rawNumber) ?: ""
+                val rawNumber = tryGetFinalNumberFromLog(applicationContext, originalMetadata.direction) ?: ""
+                val sanitizedRaw = PhoneNumberManager.normalisePhoneNumber(rawNumber)
 
                 val finalNumber = if (sanitizedRaw.isNotBlank()) {
                     val parsed = phoneNumberManager.parsePhoneNumber(sanitizedRaw)
@@ -367,7 +366,7 @@ class RecordingForegroundService : Service() {
                 }
 
                 if (finalNumber.isNotBlank()) {
-                    val updatedMeta = originalMetadata.copy(rawPhoneNumber = finalNumber)
+                    val updatedMeta = originalMetadata.copy(normalisedPhoneNumber = finalNumber)
                     val newName = RecordingFileNameFormatter.formatFileName(applicationContext, updatedMeta, activeSession.currentCodecEnum)
                     try {
                         DocumentFile.fromSingleUri(applicationContext, uriToRename)
@@ -393,12 +392,12 @@ class RecordingForegroundService : Service() {
      */
     private suspend fun tryGetFinalNumberFromLog(
         context: Context,
-        direction: RecordingDirection?
+        direction: CallDirection?
     ): String? {
         val typeSelection = when (direction) {
             // We do not want to include missed or rejected calls here since they are useless to us, and in a Dual-call scenario could lead to picking the wrong number.
-            RecordingDirection.INCOMING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.INCOMING_TYPE}"
-            RecordingDirection.OUTGOING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.OUTGOING_TYPE}"
+            CallDirection.INCOMING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.INCOMING_TYPE}"
+            CallDirection.OUTGOING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.OUTGOING_TYPE}"
             else -> null
         }
         // Try multiples times with a delay in case the OS didn't write the call log entry yet (only written after the call ended).

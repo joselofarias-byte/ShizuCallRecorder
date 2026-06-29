@@ -11,13 +11,13 @@ body:
       label: Checklist
       description: Please confirm the following before continuing
       options:
-        - label: I have searched existing [issues](https://github.com/kitsumed/ShizuCallRecorder/issues) and [discussions](https://github.com/kitsumed/ShizuCallRecorder/discussions/categories/community-support) and this is not a duplicate
+        - label: I have read the application [docs](https://github.com/kitsumed/ShizuCallRecorder/blob/main/docs/SUPPORT.md), searched existing [issues](https://github.com/kitsumed/ShizuCallRecorder/issues) and [discussions](https://github.com/kitsumed/ShizuCallRecorder/discussions/categories/community-support) and this is not a duplicate
           required: true
         - label: I am using the latest version of the project
           required: true
         - label: I am reporting an issue with ShizuCallRecorder itself, NOT an issue about Shizuku or another app
           required: true
-        - label: I have read the application [docs](https://github.com/kitsumed/ShizuCallRecorder/blob/main/docs/SUPPORT.md).
+        - label: I have attached or pasted the required log files below (or explained why they are unavailable)
           required: true
 
   - type: input
@@ -80,12 +80,13 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs / Screenshots
-      description: Add logs, error messages, screenshots, and video, if available
+      label: Logs / Screenshots / Videos
+      description: |        
+        ### 📥 How to get your logs:
+        1. **App Logs Exporter:** Open *ShizuCallRecorder*, go to the **Debug** section, and ensure **Log recording** is enabled. Replicate the bug, then export the file.
+        2. **System Logcat:** If the app crashes instantly, please capture a system logcat using a computer with [`adb logcat`](https://developer.android.com/tools/releases/platform-tools#downloads) or via a Shizuku-powered logcat tool. **You must capture logs by their tag `SCR:`**, do not target the package as it will cause some logs to be missing.
       placeholder: |
-        If you have a file, please upload it in one of the prior steps instead of pasting its raw content here.
-
-        To export logs, you can go under the Debug section and enable Log recording. Note that this feature only record a limited amount of logs. If you can, include logs from your device using logcat or any Shizuku-powered app that use logcat, so that any missing logs may be visible. Ensure you redact sensitive informations.
-      render: shell
+        If you have a file, please upload it instead of pasting its raw content here.
+        Ensure you redact sensitive informations.
     validations:
-      required: false
+      required: true

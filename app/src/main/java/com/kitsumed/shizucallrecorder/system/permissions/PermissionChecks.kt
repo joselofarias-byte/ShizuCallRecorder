@@ -9,10 +9,12 @@
 package com.kitsumed.shizucallrecorder.system.permissions
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.Process
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
@@ -36,38 +38,6 @@ object PermissionChecks {
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
         }
-    }
-
-    /**
-     * Returns true if [Manifest.permission.READ_PHONE_STATE] is granted.
-     *
-     * This permission is required to:
-     *  - Receive [android.telephony.TelephonyManager.EXTRA_INCOMING_NUMBER] in broadcasts.
-     *  - Call [android.telephony.TelephonyManager.getCallState] programmatically.
-     *
-     * @param context The app context.
-     * @return true if the phone-state permission is currently granted.
-     */
-    fun hasPhoneStatePermission(context: Context): Boolean {
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_PHONE_STATE
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    /**
-     * Returns true if [Manifest.permission.READ_CALL_LOG] is granted.
-     *
-     * Required to read call logs and receive deprecated phone number in phone state broadcast intents.
-     *
-     * @param context The app context.
-     * @return true if the read-call-log permission is currently granted.
-     */
-    fun hasCallLogPermission(context: Context): Boolean {
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_CALL_LOG
-        ) == PackageManager.PERMISSION_GRANTED
     }
 
     /**
