@@ -1,4 +1,4 @@
-/*
+﻿/*
  * ShizuCallRecorder: FOSS Call recording powered through ADB/Shizuku!
  *  Copyright (C) 2026-present kitsumed (Med)
  *  This software is licensed under the GNU General Public License v3 or later, with additional terms as permitted under Section 7.
@@ -9,6 +9,7 @@
 package com.kitsumed.shizucallrecorder.ui.viewmodels
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,114 +20,107 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-data class PlaybackUiState(
-    val isPrepared: Boolean = false,
-    val isPlaying: Boolean = false,
-    val durationMs: Long = 0L,
-    val positionMs: Long = 0L
-)
-
 class PlaybackViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val appContext = application.applicationContext
+    private val notesPrefs = application.getSharedPreferences("recording_notes", Context.MODE_PRIVATE)
 
-    private var player: ExoPlayer? = null
-    private var currentUri: Uri? = null
+    private val player: ExoPlayer = ExoPlayer.Builder(application).build()
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying
+
+    private val _currentPosition = MutableStateFlow(0L)
+    val currentPosition: StateFlow<Long> = _currentPosition
+
+    private val _duration = MutableStateFlow(0L)
+    val duration: StateFlow<Long> = _duration
+
+    private val _note = MutableStateFlow("")
+    val note: StateFlow<String> = _note
+
     private var progressJob: Job? = null
+    private var currentUri: Uri? = null
 
-    private val _uiState = MutableStateFlow(PlaybackUiState())
-    val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
+    init {
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _isPlaying.value = isPlaying
+                if (isPlaying) startProgressTracking() else progressJob?.cancel()
+            }
 
-    fun prepare(recordingUri: Uri) {
-        if (currentUri == recordingUri && player != null) return
-
-        progressJob?.cancel()
-        player?.release()
-
-        currentUri = recordingUri
-
-        val newPlayer = ExoPlayer.Builder(appContext).build()
-        player = newPlayer
-
-        newPlayer.addListener(
-            object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    updateStateFromPlayer()
-                }
-
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    updateStateFromPlayer()
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    _duration.value = player.duration.coerceAtLeast(0L)
                 }
             }
-        )
+        })
+    }
 
-        newPlayer.setMediaItem(MediaItem.fromUri(recordingUri))
-        newPlayer.prepare()
+    fun load(uri: Uri) {
+        if (uri == currentUri) return
 
-        startProgressUpdates()
-        updateStateFromPlayer()
+        currentUri = uri
+        player.setMediaItem(MediaItem.fromUri(uri))
+        player.prepare()
+        _currentPosition.value = 0L
+        _duration.value = 0L
+        _note.value = notesPrefs.getString(uri.toString(), "") ?: ""
     }
 
     fun togglePlayPause() {
-        val currentPlayer = player ?: return
-        if (currentPlayer.isPlaying) {
-            currentPlayer.pause()
-        } else {
-            currentPlayer.play()
+        if (player.isPlaying) player.pause() else player.play()
+    }
+
+    fun seekForward() {
+        val duration = player.duration.takeIf { it > 0L } ?: Long.MAX_VALUE
+        player.seekTo((player.currentPosition + 5_000L).coerceAtMost(duration))
+    }
+
+    fun seekBack() {
+        player.seekTo((player.currentPosition - 5_000L).coerceAtLeast(0L))
+    }
+
+    fun seekTo(ms: Long) {
+        player.seekTo(ms.coerceAtLeast(0L))
+        val duration = _duration.value
+        _currentPosition.value = if (duration > 0L) ms.coerceIn(0L, duration) else ms.coerceAtLeast(0L)
+    }
+
+    fun updateNote(text: String) {
+        _note.value = text
+        currentUri?.let { uri ->
+            notesPrefs.edit().putString(uri.toString(), text).apply()
         }
-        updateStateFromPlayer()
     }
 
-    fun pause() {
-        player?.pause()
-        updateStateFromPlayer()
+    fun resetOnLeave() {
+        progressJob?.cancel()
+        player.pause()
+        player.clearMediaItems()
+        currentUri = null
+        _isPlaying.value = false
+        _currentPosition.value = 0L
+        _duration.value = 0L
     }
 
-    fun seekTo(positionMs: Long) {
-        val currentPlayer = player ?: return
-        val duration = currentPlayer.duration.takeIf { it > 0L } ?: Long.MAX_VALUE
-        currentPlayer.seekTo(positionMs.coerceIn(0L, duration))
-        updateStateFromPlayer()
-    }
-
-    fun seekBy(deltaMs: Long) {
-        val currentPlayer = player ?: return
-        seekTo(currentPlayer.currentPosition + deltaMs)
-    }
-
-    private fun startProgressUpdates() {
+    private fun startProgressTracking() {
+        progressJob?.cancel()
         progressJob = viewModelScope.launch {
             while (isActive) {
-                updateStateFromPlayer()
-                delay(500L)
+                _currentPosition.value = player.currentPosition.coerceAtLeast(0L)
+                if (player.duration > 0L) _duration.value = player.duration
+                delay(200L)
             }
-        }
-    }
-
-    private fun updateStateFromPlayer() {
-        val currentPlayer = player ?: return
-        val duration = currentPlayer.duration.takeIf { it > 0L } ?: 0L
-        val position = currentPlayer.currentPosition.coerceAtLeast(0L)
-
-        _uiState.update {
-            it.copy(
-                isPrepared = currentPlayer.playbackState != Player.STATE_IDLE,
-                isPlaying = currentPlayer.isPlaying,
-                durationMs = duration,
-                positionMs = if (duration > 0L) position.coerceAtMost(duration) else position
-            )
         }
     }
 
     override fun onCleared() {
-        progressJob?.cancel()
-        player?.release()
-        player = null
         super.onCleared()
+        progressJob?.cancel()
+        player.release()
     }
 }
+

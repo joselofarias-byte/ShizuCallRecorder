@@ -192,8 +192,7 @@ fun AppNavigationScreen() {
                                 )
                             } else {
                                 PlaybackScreen(
-                                    recordingUri = recording.uri,
-                                    recordingName = recording.displayName,
+                                    recording = recording,
                                     onBack = { mainDestination = MainDestination.Recordings }
                                 )
                             }

@@ -23,6 +23,52 @@ import java.util.Locale
 
 object RecordingFileNameFormatter {
     const val TAG = "SCR:RecordingFileNameFormatter"
+
+    /**
+     * Internal ownership prefix prepended to every new recording file name.
+     *
+     * This allows ShizuCallRecorder to distinguish its own recordings from files created by
+     * other apps (e.g. EverCallRecorder, Cally) when they share the same SAF folder chosen
+     * by the user. The prefix is never shown to the user: see [stripOwnershipPrefix].
+     *
+     * Picked to be distinctive and filesystem-safe. Must not contain characters that would
+     * collide with the date separator "_" used inside the file name.
+     */
+    const val OWNED_FILE_PREFIX = "shizucall_"
+
+    /**
+     * Removes the [OWNED_FILE_PREFIX] from the beginning of a file name, if present.
+     *
+     * Used to hide the ownership marker from the user-facing display name and from the
+     * internal parser, so the historical `{date}_{direction}_{phone_number}` layout is preserved.
+     *
+     * Safe to call on names without the prefix (returns them unchanged).
+     */
+    fun stripOwnershipPrefix(name: String): String =
+        if (name.startsWith(OWNED_FILE_PREFIX)) name.substring(OWNED_FILE_PREFIX.length) else name
+
+    /**
+     * Returns true if the given file name (with or without extension) was created by this app
+     * using the new naming scheme (i.e. it carries the [OWNED_FILE_PREFIX]).
+     */
+    fun isOwnedRecording(name: String): Boolean = name.startsWith(OWNED_FILE_PREFIX)
+
+    /**
+     * Returns true if the given file name matches the historical ShizuCallRecorder naming
+     * scheme used before the ownership prefix was introduced.
+     *
+     * The historical scheme always starts with a timestamp of the form `yyyyMMdd_HHmmss` followed
+     * (after optional timezone offset) by the call direction (`_in_` or `_out_`). This is distinctive
+     * enough to exclude files from other apps (EverCallRecorder, Cally, etc.) that share the folder.
+     *
+     * @param name The raw file name including extension (e.g. "20260627_180212.012-0300_out_+598611.ogg").
+     */
+    fun isLegacyRecording(name: String): Boolean = LEGACY_NAME_REGEX.containsMatchIn(name)
+
+    // Pattern: yyyyMMdd_HHmmss[.SSS+Z]  followed by  _in_ or _out_
+    // The direction marker is the unique fingerprint of ShizuCallRecorder's default naming.
+    private val LEGACY_NAME_REGEX = Regex("""^\d{8}_\d{2}[\d.\+\-:Z]*_(?:in|out)_""")
+
     /**
      * Represents the supported placeholders that can be used in the file name template.
      * Binds the literal tag used in formatting to a localized description for the UI.
@@ -110,7 +156,9 @@ object RecordingFileNameFormatter {
             .replace(FileNamePlaceholder.PACKAGE_NAME.tag, packageName)
 
         AppLogger.v(TAG, "Formatted base filename: '$baseName' with template '$template'")
-        return "$baseName${codec.containerExtension}"
+        // Prepend the internal ownership prefix so this recording can be told apart from files
+        // created by other apps sharing the same SAF folder. The prefix is stripped before display.
+        return "$OWNED_FILE_PREFIX$baseName${codec.containerExtension}"
     }
 
     /**
