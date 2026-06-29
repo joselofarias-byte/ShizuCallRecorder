@@ -277,7 +277,7 @@ fun RecordingsScreen(
                                         if (isSelectionMode) viewModel.toggleSelection(item.uri) else onRecordingClick(item)
                                     },
                                     onToggleSelect = { item -> viewModel.toggleSelection(item.uri) },
-                                    onShare = { item -> shareRecording(context, item.uri) },
+                                    onShare = { item -> shareRecording(context, item) },
                                     onDelete = { item -> viewModel.deleteRecording(item) },
                                     modifier = Modifier.padding(horizontal = 16.dp)
                                 )
@@ -293,7 +293,10 @@ fun RecordingsScreen(
                     total = uiState.recordings.size,
                     onCancel = viewModel::clearSelection,
                     onSelectAll = viewModel::selectAllVisible,
-                    onShare = { shareRecordings(context, uiState.selectedUris.toList()) },
+                    onShare = {
+                        val selected = uiState.recordings.filter { it.uri in uiState.selectedUris }
+                        shareRecordings(context, selected)
+                    },
                     onDelete = { showBulkDeleteConfirm = true },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -985,24 +988,48 @@ private fun EmptyState(
     }
 }
 
-private fun shareRecording(context: android.content.Context, uri: Uri) {
+private fun shareRecording(context: android.content.Context, item: RecordingItem) {
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "audio/*"
-        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_STREAM, item.uri)
+        // Attach a human-readable card so the receiver app (WhatsApp, email, ...) can show
+        // who/when alongside the audio, since the file itself carries no embedded tags.
+        putExtra(Intent.EXTRA_TEXT, buildShareCard(item))
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(intent, "Compartir grabación"))
 }
 
-private fun shareRecordings(context: android.content.Context, uris: List<Uri>) {
-    if (uris.isEmpty()) return
+private fun shareRecordings(context: android.content.Context, items: List<RecordingItem>) {
+    if (items.isEmpty()) return
 
     val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
         type = "audio/*"
-        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(items.map { it.uri }))
+        putExtra(Intent.EXTRA_TEXT, items.joinToString("\n\n") { buildShareCard(it) })
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "Compartir grabaciónes"))
+    context.startActivity(Intent.createChooser(intent, "Compartir grabaciones"))
+}
+
+/**
+ * Builds a short, plain-text description of a recording to attach to share intents.
+ * Mirrors the fields shown in RecordingInfoDialog so the share matches what the user sees.
+ */
+private fun buildShareCard(item: RecordingItem): String {
+    val direction = if (item.direction == "in") "Entrante" else "Saliente"
+    val date = item.date?.let { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(it) }.orEmpty()
+    val duration = if (item.durationMs > 0L) formatDurationMs(item.durationMs) else ""
+    val lines = buildList {
+        add("Grabación de llamada")
+        item.contactName?.takeIf { it.isNotBlank() }?.let { add("Contacto: $it") }
+        add("Número: ${item.phoneNumber}")
+        add("Dirección: $direction")
+        if (date.isNotBlank()) add("Fecha: $date")
+        if (duration.isNotBlank()) add("Duración: $duration")
+        item.noteText.takeIf { it.isNotBlank() }?.let { add("Nota: $it") }
+    }
+    return lines.joinToString("\n")
 }
 
 private fun groupLabel(date: Date?): String {
