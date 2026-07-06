@@ -16,10 +16,7 @@ import android.util.Log
 import androidx.annotation.Keep
 import com.kitsumed.shizucallrecorder.ILogCallback
 import com.kitsumed.shizucallrecorder.IShellService
-import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyAudioCodec
-import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyAudioSource
 import com.kitsumed.shizucallrecorder.integrations.scrcpy.ScrcpyConfig
-import com.kitsumed.shizucallrecorder.integrations.scrcpy.ServerExtractor
 import com.kitsumed.shizucallrecorder.utils.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +25,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
@@ -195,11 +191,10 @@ class ShellService : IShellService.Stub {
             AppLogger.i(TAG,"Initialising the ShellService recording pipeline...")
 
             // 1. Security check
-            // Verify the JAR's SHA-256, before exec.
-            // Checking in the shell process, try to reduce TOCTOU but not perfect.
-            val serverJarFile = File(serverPath)
-            if (!serverJarFile.exists() || !ServerExtractor.verifyServerHash(serverJarFile)) {
-                AppLogger.w(TAG,"Server JAR absent or SHA-256 mismatch at $serverPath - aborting")
+            // Verify the JAR's SHA-256 before exec. Delegated to ShellCommandExecutor.
+            // Checking in the shell process to reduce TOCTOU exposure (not a perfect guarantee).
+            if (!ShellCommandExecutor.verifyServerJar(serverPath)) {
+                AppLogger.w(TAG, "Server JAR absent or SHA-256 mismatch at $serverPath - aborting")
                 return null
             }
 
@@ -226,21 +221,9 @@ class ShellService : IShellService.Stub {
             spawnAudioRelayCoroutine(isDebuggingModeEnabled)
 
             // 4. Build and launch scrcpy-server
-            // Convert the raw String parameters received via AIDL into type-safe enum values
-            // before calling buildServerArgs.
-            val audioSourceEnum = ScrcpyAudioSource.fromKey(audioSource)
-            val audioCodecEnum  = ScrcpyAudioCodec.fromKey(audioCodec)
-            val serverArgs    = ScrcpyConfig.buildServerArgs(socketName, audioSourceEnum, audioCodecEnum, audioBitRate)
-            val launchCommand = mutableListOf("app_process", "/", ScrcpyConfig.SERVER_MAIN_CLASS)
-            launchCommand.addAll(serverArgs)
-
-            val scrcpyBuilder = ProcessBuilder(launchCommand).apply {
-                // CLASSPATH tells app_process where to find the server binary file.
-                environment()["CLASSPATH"] = serverPath
-                // Merge stderr into stdout so the log-consumer coroutine only needs one stream.
-                redirectErrorStream(true)
-            }
-            scrcpyProcess = scrcpyBuilder.start()
+            // Parameter conversion (String→enum), argument construction, and process launch
+            // are delegated to ShellCommandExecutor.
+            scrcpyProcess = ShellCommandExecutor.launchScrcpyServer(serverPath, socketName, audioSource, audioCodec, audioBitRate)
             isRecordingActive.set(true)
             AppLogger.i(TAG,"scrcpy-server launched successfully")
 
