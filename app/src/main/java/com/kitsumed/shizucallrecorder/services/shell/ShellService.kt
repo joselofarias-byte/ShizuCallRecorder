@@ -6,7 +6,7 @@
  *  This software is distributed WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-package com.kitsumed.shizucallrecorder.services
+package com.kitsumed.shizucallrecorder.services.shell
 
 import android.content.Context
 import android.net.LocalServerSocket

@@ -41,3 +41,18 @@
   d(...);
   i(...);
 }
+
+# ---------------------------------------------------------------------------
+# V1-D: ShellService and AIDL keep rules
+# ---------------------------------------------------------------------------
+
+# ShellService: loaded by reflection from Shizuku (UserServiceArgs uses class name string).
+# @Keep on source alone is not sufficient with R8 full mode in release builds.
+-keep class com.kitsumed.shizucallrecorder.services.shell.ShellService {
+    public <init>();
+    public <init>(android.content.Context);
+}
+
+# AIDL Stub classes: used by Binder IPC between processes.
+-keep class com.kitsumed.shizucallrecorder.IShellService$Stub { *; }
+-keep class com.kitsumed.shizucallrecorder.ILogCallback$Stub  { *; }
