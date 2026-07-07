@@ -358,10 +358,7 @@ class RecordingForegroundService : Service() {
 
                 val finalNumber = if (sanitizedRaw.isNotBlank()) {
                     val parsed = phoneNumberManager.parsePhoneNumber(sanitizedRaw)
-                    if (parsed != null) {
-                        phoneNumberManager.formatToE164(parsed)
-                    }
-                    sanitizedRaw
+                    parsed?.let { phoneNumberManager.formatToE164(it) } ?: sanitizedRaw
                 } else {
                     sanitizedRaw
                 }
