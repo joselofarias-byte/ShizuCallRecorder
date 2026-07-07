@@ -24,6 +24,7 @@ import com.kitsumed.shizucallrecorder.data.call.CallDirection
 import com.kitsumed.shizucallrecorder.data.call.EnrichedCallData
 import com.kitsumed.shizucallrecorder.integrations.shizuku.ShizukuConnectionManager
 import com.kitsumed.shizucallrecorder.utils.AppLogger
+import com.kitsumed.shizucallrecorder.utils.CallLogHelper
 import com.kitsumed.shizucallrecorder.utils.PhoneNumberManager
 import com.kitsumed.shizucallrecorder.utils.RecordingFileNameFormatter
 import kotlinx.coroutines.CoroutineScope
@@ -352,7 +353,7 @@ class RecordingForegroundService : Service() {
             // We use GlobalScope/IO because the Service's scope might be cancelled immediately in onDestroy.
             // Android gives the process some time to live, so this is safe for a few seconds.
             CoroutineScope(Dispatchers.IO).launch {
-                val rawNumber = tryGetFinalNumberFromLog(applicationContext, originalMetadata.direction) ?: ""
+                val rawNumber = CallLogHelper.tryGetFinalNumberFromLog(applicationContext, originalMetadata.direction) ?: ""
                 val sanitizedRaw = PhoneNumberManager.normalisePhoneNumber(rawNumber)
 
                 val finalNumber = if (sanitizedRaw.isNotBlank()) {
@@ -386,41 +387,6 @@ class RecordingForegroundService : Service() {
         stopSelf() // Stop the service since the session is over
     }
 
-    /**
-     * Tries to query the call log for the most recent call matching the given direction, and returns the associated phone number.
-     * @return The phone number from the most recent call log entry matching the direction, or null if no valid entry is found after multiple attempts.
-     */
-    private suspend fun tryGetFinalNumberFromLog(
-        context: Context,
-        direction: CallDirection?
-    ): String? {
-        val typeSelection = when (direction) {
-            // We do not want to include missed or rejected calls here since they are useless to us, and in a Dual-call scenario could lead to picking the wrong number.
-            CallDirection.INCOMING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.INCOMING_TYPE}"
-            CallDirection.OUTGOING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.OUTGOING_TYPE}"
-            else -> null
-        }
-        // Try multiples times with a delay in case the OS didn't write the call log entry yet (only written after the call ended).
-        for (i in 1..4) {
-            try {
-                val cursor = context.contentResolver.query(
-                    CallLog.Calls.CONTENT_URI,
-                    arrayOf(CallLog.Calls.NUMBER),
-                    typeSelection, null,
-                    "${CallLog.Calls.DATE} DESC"
-                )
-                cursor?.use {
-                    if (it.moveToFirst()) {
-                        return it.getString(0)
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "Failed to query call log for fallback number", e)
-            }
-            if (i < 4) delay(400)
-        }
-        return null
-    }
 
     /**
      * Updates the foreground service notification based on the current state (Recording or Standby).
