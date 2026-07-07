@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$ROOT"
+
+[ -x scripts/ai_update_memory.sh ] && scripts/ai_update_memory.sh >/dev/null 2>&1 || true
+
+echo "===== AI PROJECT MEMORY ====="
+echo
+
+for f in \
+  .ai/project.md \
+  .ai/architecture.md \
+  .ai/decisions.md \
+  .ai/tasks.md \
+  .ai/git_memory.md \
+  .ai/index/repo_index.md
+do
+  if [ -f "$f" ]; then
+    echo
+    echo "===== $f ====="
+    sed -n '1,220p' "$f"
+  fi
+done

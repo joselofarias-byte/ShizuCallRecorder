@@ -1,6 +1,6 @@
 # Git Memory
 
-Updated: 2026-07-07 03:32:14 UTC
+Updated: 2026-07-07 03:35:19 UTC
 
 ## Branch
 
@@ -11,8 +11,8 @@ main
 ## HEAD
 
 ```
-22cfc9c
-22cfc9c chore: add AI memory updater
+2c427ef
+2c427ef chore: add Antigravity context command
 ```
 
 ## Working tree
@@ -26,8 +26,9 @@ main
 ## Last diff stat
 
 ```
- .ai/git_memory.md           |   33 ++
- .ai/index/repo_index.md     | 1005 ++++++++++++++++++++++++++++++++++++++++++-
- scripts/ai_update_memory.sh |   45 ++
- 3 files changed, 1079 insertions(+), 4 deletions(-)
+ .ai/antigravity_context_snapshot.md |  350 ++++++
+ .ai/git_memory.md                   |   15 +-
+ .ai/index/repo_index.md             | 2001 ++++++++++++++++++-----------------
+ scripts/agyctx                      |   25 +
+ 4 files changed, 1384 insertions(+), 1007 deletions(-)
 ```
