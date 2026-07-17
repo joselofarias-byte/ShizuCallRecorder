@@ -47,20 +47,20 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.List
+import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Sort
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.CallMade
-import androidx.compose.material.icons.rounded.CallReceived
+import androidx.compose.material.icons.automirrored.rounded.CallMade
+import androidx.compose.material.icons.automirrored.rounded.CallReceived
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.MicNone
-import androidx.compose.material.icons.rounded.Notes
+import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -107,7 +107,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -382,7 +382,7 @@ private fun FilterPillRow(
         FilterPill(
             label = "Todas",
             selected = filterTab == RecordingsFilterTab.ALL,
-            icon = Icons.Outlined.List,
+            icon = Icons.AutoMirrored.Outlined.List,
             onClick = { onFilterChange(RecordingsFilterTab.ALL) }
         )
 
@@ -405,7 +405,7 @@ private fun FilterPillRow(
             FilterPill(
                 label = sortLabel,
                 selected = false,
-                icon = Icons.Outlined.Sort,
+                icon = Icons.AutoMirrored.Outlined.Sort,
                 trailingIcon = if (sortConfig.order == RecordingsSortOrder.DESC) Icons.Rounded.ArrowDownward else Icons.Rounded.ArrowUpward,
                 onClick = { showSortMenu = true }
             )
@@ -551,7 +551,7 @@ private fun RecordingRow(
     val context = LocalContext.current
     val isIncoming = item.direction == "in"
     val accentColor = if (isIncoming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-    val directionIcon = if (isIncoming) Icons.Rounded.CallReceived else Icons.Rounded.CallMade
+    val directionIcon = if (isIncoming) Icons.AutoMirrored.Rounded.CallReceived else Icons.AutoMirrored.Rounded.CallMade
     val directionLabel = if (isIncoming) "Entrante" else "Saliente"
     val timeStr = item.date?.let { SimpleDateFormat("hh:mm a", Locale.getDefault()).format(it) }.orEmpty()
     val displayName = item.contactName ?: item.phoneNumber
@@ -626,7 +626,7 @@ private fun RecordingRow(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(Icons.Rounded.Notes, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                            Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
                             Text(
                                 text = item.noteText.take(80),
                                 style = MaterialTheme.typography.labelSmall,
@@ -900,7 +900,7 @@ private fun RecordingInfoDialog(item: RecordingItem, onDismiss: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (isIncoming) Icons.Rounded.CallReceived else Icons.Rounded.CallMade,
+                    imageVector = if (isIncoming) Icons.AutoMirrored.Rounded.CallReceived else Icons.AutoMirrored.Rounded.CallMade,
                     contentDescription = null,
                     tint = accentColor,
                     modifier = Modifier.size(24.dp)
