@@ -1,18 +1,18 @@
 # Git Memory
 
-Updated: 2026-07-17 02:53:09 UTC
+Updated: 2026-07-17 23:55:26 UTC
 
 ## Branch
 
 ```
-shizucall-recorder-safe-improvements-20260716-203638
+shizucall-v120-fase1-android13-20260717-204801
 ```
 
 ## HEAD
 
 ```
-dd612f9
-dd612f9 fix(ui): update mirrored icons and lifecycle owner
+819615a7
+819615a7 fix(recording): use IntentCompat for Android 13 metadata parsing
 ```
 
 ## Working tree
@@ -22,14 +22,14 @@ dd612f9 fix(ui): update mirrored icons and lifecycle owner
  M .ai/git_memory.md
  M .ai/index/repo_index.md
  M scripts/agyctx
+?? .mimocode/
 ```
 
 ## Last diff stat
 
 ```
- .ai/git_memory.md                                  |   19 +-
- .ai/index/repo_index.md                            | 2003 ++++++++++----------
- .../shizucallrecorder/ui/screens/PlaybackScreen.kt |   10 +-
- .../ui/screens/RecordingsScreen.kt                 |   22 +-
- 4 files changed, 1028 insertions(+), 1026 deletions(-)
+ .ai/git_memory.md                                  |  18 +-
+ .ai/index/repo_index.md                            | 448 ++++++++++-----------
+ .../recording/RecordingForegroundService.kt        |  15 +-
+ 3 files changed, 239 insertions(+), 242 deletions(-)
 ```
