@@ -1,35 +1,44 @@
 # Git Memory
 
-Updated: 2026-07-17 23:55:26 UTC
+Updated: 2026-07-18 18:17:28 UTC
 
 ## Branch
 
 ```
-shizucall-v120-fase1-android13-20260717-204801
+shizucall-v120-fase2-notificaciones-corregida-20260718-123237
 ```
 
 ## HEAD
 
 ```
-819615a7
-819615a7 fix(recording): use IntentCompat for Android 13 metadata parsing
+8193ffea
+8193ffea feat(recording): add safe post-recording quick actions
 ```
 
 ## Working tree
 
 ```
- D .ai/antigravity_context_snapshot.md
  M .ai/git_memory.md
  M .ai/index/repo_index.md
- M scripts/agyctx
-?? .mimocode/
 ```
 
 ## Last diff stat
 
 ```
- .ai/git_memory.md                                  |  18 +-
- .ai/index/repo_index.md                            | 448 ++++++++++-----------
- .../recording/RecordingForegroundService.kt        |  15 +-
- 3 files changed, 239 insertions(+), 242 deletions(-)
+ .ai/git_memory.md                                  |   31 +-
+ .ai/index/repo_index.md                            | 2178 ++++++++++----------
+ app/src/main/AndroidManifest.xml                   |    8 +
+ .../shizucallrecorder/data/AppPreferences.kt       |   11 +-
+ .../services/recording/AudioRecordingEngine.kt     |    2 +-
+ .../recording/DeleteDialogConfirmationActivity.kt  |   67 +
+ .../recording/RecordingForegroundService.kt        |   28 +-
+ .../recording/RecordingNotificationHelper.kt       |   86 +-
+ .../shizucallrecorder/ui/screens/SettingsScreen.kt |   24 +-
+ .../ui/viewmodels/SettingsViewModel.kt             |    9 +
+ .../utils/SponsorNotificationHelper.kt             |    2 +-
+ app/src/main/res/drawable/ic_audio_file.xml        |   20 +
+ app/src/main/res/drawable/ic_outline_error.xml     |   20 +
+ .../main/res/drawable/ic_outline_heart_smile.xml   |   20 +
+ app/src/main/res/values/strings.xml                |   15 +-
+ 15 files changed, 1411 insertions(+), 1110 deletions(-)
 ```

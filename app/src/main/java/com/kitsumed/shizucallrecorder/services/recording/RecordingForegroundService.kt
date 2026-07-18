@@ -375,6 +375,32 @@ class RecordingForegroundService : Service() {
                 }
             }
         }
+        if (
+            appPreferences.isPostRecordingFileActionsNotificationEnabled() &&
+            uriToRename != null &&
+            originalMetadata != null
+        ) {
+            val recordedFile = DocumentFile.fromSingleUri(
+                applicationContext,
+                uriToRename
+            )
+
+            if (
+                recordedFile != null &&
+                recordedFile.exists() &&
+                recordedFile.length() > 0
+            ) {
+                AppLogger.d(
+                    TAG,
+                    "Showing post-recording notification for user actions."
+                )
+                notificationHelper.showPostCallNotification(
+                    uriToRename,
+                    originalMetadata
+                )
+            }
+        }
+
         currentState = RecordingServiceState.Standby(null)
         AppLogger.i(TAG, "The recording session has been stopped and resources have been released. Stopping foreground service. Goodbye >3")
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -386,7 +412,7 @@ class RecordingForegroundService : Service() {
      * Updates the foreground service notification based on the current state (Recording or Standby).
      */
     private fun updateNotification() {
-        val notification = notificationHelper.getNotification(currentState)
+        val notification = notificationHelper.getServiceNotification(currentState)
         startForegroundWithType(notification)
     }
 
