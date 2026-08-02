@@ -232,25 +232,37 @@ class RecordingNotificationHelper(private val context: Context) {
     fun showPostCallNotification(fileUri: Uri, callMetadata: EnrichedCallData) {
         val manager = context.getSystemService(NotificationManager::class.java)
 
-        // Play action
+        // Resolve the target first and pin it to the Intent before wrapping it in a PendingIntent.
+        // This prevents another application from intercepting or replacing the PendingIntent target.
         val playIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(fileUri, "audio/*")
-            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION // Allows the receiving app to read the SAF file
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
-        val playPendingIntent = PendingIntent.getActivity(
-            context, REQUEST_CODE_OPEN_RECORDING, playIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val playPendingIntent = playIntent.resolveActivity(context.packageManager)?.let { target ->
+            playIntent.component = target
+            PendingIntent.getActivity(
+                context,
+                REQUEST_CODE_OPEN_RECORDING,
+                playIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
 
-        // Share action
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "audio/*"
             putExtra(Intent.EXTRA_STREAM, fileUri)
             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
         val chooserIntent = Intent.createChooser(shareIntent, null)
-        val sharePendingIntent = PendingIntent.getActivity(
-            context, REQUEST_CODE_SHARE_RECORDING, chooserIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val sharePendingIntent = chooserIntent.resolveActivity(context.packageManager)?.let { target ->
+            chooserIntent.component = target
+            PendingIntent.getActivity(
+                context,
+                REQUEST_CODE_SHARE_RECORDING,
+                chooserIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
 
         // Delete action (Triggers our DeleteDialogConfirmationActivity)
         val deleteIntent = Intent(context, DeleteDialogConfirmationActivity::class.java).apply {
@@ -260,19 +272,23 @@ class RecordingNotificationHelper(private val context: Context) {
             context, REQUEST_CODE_DELETE_RECORDING, deleteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_POST_RECORDING_FILE_ACTIONS)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_POST_RECORDING_FILE_ACTIONS)
             .setSmallIcon(R.drawable.ic_audio_file)
             .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher))
             .setContentTitle(context.getString(R.string.post_recording_notification_title))
             .setContentText(callMetadata.getBestNumber().takeIf { it.isNotEmpty() } ?: context.getString(R.string.post_recording_notification_unknown_caller))
             .setAutoCancel(true)
-            .addAction(android.R.drawable.ic_media_play, context.getString(R.string.general_play), playPendingIntent)
-            .addAction(android.R.drawable.ic_menu_share, context.getString(R.string.general_share), sharePendingIntent)
-            .addAction(android.R.drawable.ic_menu_delete, context.getString(R.string.general_delete), deletePendingIntent)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .build()
 
-        manager.notify(POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ID, notification)
+        playPendingIntent?.let {
+            builder.addAction(android.R.drawable.ic_media_play, context.getString(R.string.general_play), it)
+        }
+        sharePendingIntent?.let {
+            builder.addAction(android.R.drawable.ic_menu_share, context.getString(R.string.general_share), it)
+        }
+        builder.addAction(android.R.drawable.ic_menu_delete, context.getString(R.string.general_delete), deletePendingIntent)
+
+        manager.notify(POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ID, builder.build())
     }
 
     /**
