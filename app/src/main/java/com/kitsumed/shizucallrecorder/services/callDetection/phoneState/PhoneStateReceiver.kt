@@ -36,6 +36,10 @@ import com.kitsumed.shizucallrecorder.utils.AppLogger
  */
 class PhoneStateReceiver : BroadcastReceiver() {
 
+    companion object {
+        private const val TAG = "PhoneStateReceiver"
+    }
+
     /**
      * Called by the Android framework when a phone-state change broadcast is received.
      *
