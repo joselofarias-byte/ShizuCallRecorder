@@ -10,45 +10,33 @@ package com.kitsumed.shizucallrecorder.services.recording
 
 import android.app.Notification
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.provider.CallLog
+import androidx.core.content.IntentCompat
 import androidx.documentfile.provider.DocumentFile
 import com.kitsumed.shizucallrecorder.IShellService
 import com.kitsumed.shizucallrecorder.R
 import com.kitsumed.shizucallrecorder.data.AppPreferences
-import com.kitsumed.shizucallrecorder.data.call.CallDirection
 import com.kitsumed.shizucallrecorder.data.call.EnrichedCallData
 import com.kitsumed.shizucallrecorder.integrations.shizuku.ShizukuConnectionManager
 import com.kitsumed.shizucallrecorder.utils.AppLogger
-import com.kitsumed.shizucallrecorder.utils.PhoneNumberManager
-import com.kitsumed.shizucallrecorder.utils.RecordingFileNameFormatter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * RecordingForegroundService is the long-running foreground service that
- * manage the audio-recording pipeline.
- *
- * The service has two visible states:
- *  - **Standby** – call is active but auto-record is disabled; a notification prompts the user.
- *  - **Recording** – audio pipeline is running; a "Stop" action is shown.
- *
- * @see <a href="https://developer.android.com/guide/components/foreground-services#background-start-restriction">Foreground Service Restrictions (Android 12+)</a>
- * @see <a href="https://developer.android.com/about/versions/14/changes/fgs-types-required">FGS Type Requirements (Android 14+)</a>
+ * RecordingForegroundService is the long-running service that manage the audio-recording logic.
  */
 class RecordingForegroundService : Service() {
     companion object {
-        private const val TAG = "SCR:RecordingForegroundService"
-
         // -- Intent action for controlling and initializing the service lifecycle. --
 
         /** Intent action sent to this service to initialize the service and immediately start a new recording session. */
@@ -83,9 +71,9 @@ class RecordingForegroundService : Service() {
 
     private lateinit var appPreferences: AppPreferences
 
-    private lateinit var phoneNumberManager: PhoneNumberManager
-
     private lateinit var notificationHelper: RecordingNotificationHelper
+
+    private lateinit var overlayController: RecordingOverlayController
 
     /** IPC stub to the privileged ShellService running in the shell process. */
     private var shellService: IShellService? = null
@@ -95,25 +83,11 @@ class RecordingForegroundService : Service() {
 
     // ── Recording session state ────────────────────────────────────────────────────────
 
-    /** The current state of the service. */
-    @Volatile
-    private var currentState: RecordingServiceState = RecordingServiceState.Standby(null)
-        set(value) {
-            if (field != value) {
-                val oldState = field
-                field = value
-                updateNotification()
-                notificationHelper.handleStateChangeToasts(oldState, value)
-            }
-        }
+    /* The current state of the service. */
+    private val _serviceState = MutableStateFlow<RecordingServiceState>(RecordingServiceState.Standby(null))
 
-    /** True while a recording session object is present (initializing, active, or pending teardown). */
-    private val hasSession: Boolean
-        get() = currentState is RecordingServiceState.Active
-
-    /** True only if the pipeline is actively reading and capturing audio. */
-    private val isCurrentlyRecording: Boolean
-        get() = (currentState as? RecordingServiceState.Active)?.engine?.audioPipeReadJob?.isActive == true
+    /* Exposes the current state of the recording service (read-only) for external observation. */
+    val serviceState = _serviceState.asStateFlow()
 
     // ── Service lifecycle ──────────────────────────────────────────────────────────────
 
@@ -121,20 +95,33 @@ class RecordingForegroundService : Service() {
         super.onCreate()
         notificationHelper = RecordingNotificationHelper(this)
         notificationHelper.createNotificationChannels()
+        overlayController = RecordingOverlayController(this)
 
         appPreferences = AppPreferences(this)
-        phoneNumberManager = PhoneNumberManager.getInstance(this)
+
+        // Launch a collector to do actions on the service state changes
+        serviceScope.launch(Dispatchers.Main.immediate) { // Use immediate to ensure we get the initial (oldState) value on launch
+            var oldState: RecordingServiceState = _serviceState.value
+            _serviceState.collect { newState ->
+                if (oldState != newState) {
+                    updateNotification()
+                    notificationHelper.handleStateChangeToasts(oldState, newState)
+                    overlayController.showOverlay(newState)
+                    oldState = newState
+                }
+            }
+        }
 
         shizukuManager = ShizukuConnectionManager(this) {
-            AppLogger.w(TAG, "Received callback from ShizukuConnectionManager: Shizuku disconnected unexpectedly. Stopping recording service...")
-            // Handle cleanup if the service dies
-            if (hasSession) {
+            AppLogger.w( "Received callback from ShizukuConnectionManager: Shizuku disconnected unexpectedly. Stopping recording service...")
+            // Handle cleanup if the service dies during recording
+            if (_serviceState.value.isRecordingActive) {
                 notificationHelper.showErrorNotification(getString(R.string.recording_error_shizuku_disconnected_unexpectedly))
                 stopRecordingSessionAndService()
             }
         }
 
-        AppLogger.d(TAG, "RecordingForegroundService initialized")
+        AppLogger.d( "RecordingForegroundService initialized")
     }
 
     // No binding. This is a fully command-based service. All interactions are via startService with intent actions.
@@ -153,20 +140,17 @@ class RecordingForegroundService : Service() {
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        val state = _serviceState.value
 
-        var currentMeta = currentState.metadata
+        var currentMeta = state.metadata
 
         // Parse metadata if present in the intent (START/STANDBY)
         if (intent != null) {
-            val newMetadata = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(
-                    EnrichedCallData.EXTRA_METADATA,
-                    EnrichedCallData::class.java
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(EnrichedCallData.EXTRA_METADATA)
-            }
+            val newMetadata = IntentCompat.getParcelableExtra(
+                intent,
+                EnrichedCallData.EXTRA_METADATA,
+                EnrichedCallData::class.java
+            )
             if (newMetadata != null) {
                 currentMeta = newMetadata
             }
@@ -178,20 +162,20 @@ class RecordingForegroundService : Service() {
 
         when (action) {
             ACTION_START_RECORDING, ACTION_MANUAL_START -> {
-                if (hasSession || isCurrentlyRecording) {
-                    AppLogger.w(TAG, "Start request ignored. A session is already on-going.")
+                if (state.isRecordingActive) {
+                    AppLogger.w( "Start request ignored. A session is already on-going.")
                     return START_NOT_STICKY
                 }
 
                 // At this point, we should already have the metadata from the intents, if it's missing, there's a logic error to be fixed.
                 if (currentMeta == null) {
-                    AppLogger.e(TAG, "Start request received without metadata. Cannot start recording session.")
+                    AppLogger.e( "Start request received without metadata. Cannot start recording session.")
                     notificationHelper.showErrorNotification(getString(R.string.recording_unexpected_error))
                     stopRecordingSessionAndService()
                     return START_NOT_STICKY // We won't reach this anyway.
                 }
 
-                currentState = RecordingServiceState.Starting(currentMeta)
+                _serviceState.update { RecordingServiceState.Starting(currentMeta) }
 
                 // If enabled in the user preferences, we try to start the Shizuku as we are now starting the recording.
                 tryStartShizukuServer()
@@ -204,20 +188,23 @@ class RecordingForegroundService : Service() {
                         shellService = service // update local ref
                         startNewRecordingSession(service, currentMeta)
                     } catch (e: SecurityException) { // Shizuku permission not granted
-                        AppLogger.e(TAG, "Shizuku permission was denied / not granted", e)
+                        AppLogger.e( "Shizuku permission was denied / not granted", e)
                         notificationHelper.showErrorNotification(getString(R.string.recording_shizuku_permission_denied))
                         stopRecordingSessionAndService()
                     } catch (e: Exception) { // Shizuku not running or other binding connection errors
                         // Don't catch coroutine cancellations, they are used for cleanup. This creates a false error notification when everything's fine.
                         if (e is CancellationException) throw e
 
-                        AppLogger.e(TAG, "Failed to perform ShellService binding with Shizuku. Ensure it is running, else look at error related to failed binding.", e)
+                        AppLogger.e( "Failed to perform ShellService binding with Shizuku. Ensure it is running, else look at error related to failed binding.", e)
                         notificationHelper.showErrorNotification(getString(R.string.recording_shizuku_not_started) + "\nLocalized: " + e.localizedMessage)
                         stopRecordingSessionAndService()
                     } finally {
-                        if (currentState is RecordingServiceState.Starting) {
-                            if (!hasSession) {
-                                currentState = RecordingServiceState.Standby(currentMeta)
+                        _serviceState.update { currentState ->
+                            // If we failed to start the recording session, we should return to standby state with the current metadata.
+                            if (currentState is RecordingServiceState.Starting) {
+                                RecordingServiceState.Standby(currentMeta)
+                            } else {
+                                currentState
                             }
                         }
                     }
@@ -225,34 +212,38 @@ class RecordingForegroundService : Service() {
             }
 
             ACTION_STANDBY -> {
-                currentState = RecordingServiceState.Standby(currentMeta)
+                _serviceState.update { RecordingServiceState.Standby(currentMeta) }
                 serviceScope.launch {
                     // If enabled in the user preferences, we try to start the Shizuku server as early as possible (in the standby state, RINGING/OUTGOING),
                     // increasing the chance it's ready by the time we need it. But this means Shizuku will be running without the user starting the recording yet.
                     if (!appPreferences.isShizukuStartOnRecordEnabled()) {
                         tryStartShizukuServer()
                     }
-                    AppLogger.i(TAG, "Entered standby for ${currentMeta?.direction} call")
+                    AppLogger.i( "Entered standby for ${currentMeta?.direction} call")
                 }
             }
 
             ACTION_PAUSE_RECORDING -> {
-                (currentState as? RecordingServiceState.Active)?.let {
-                    it.engine.isPaused = true
-                    currentState = it.copy(isPaused = true)
+                _serviceState.update { currentState ->
+                    if (currentState is RecordingServiceState.Active) {
+                        currentState.engine.isPaused = true // Pause the recording engine
+                        currentState.copy(isPaused = true) // Update the service state to reflect the paused state
+                    } else currentState
                 }
             }
 
             ACTION_RESUME_RECORDING -> {
-                (currentState as? RecordingServiceState.Active)?.let {
-                    it.engine.isPaused = false
-                    currentState = it.copy(isPaused = false)
+                _serviceState.update { currentState ->
+                    if (currentState is RecordingServiceState.Active) {
+                        currentState.engine.isPaused = false
+                        currentState.copy(isPaused = false)
+                    } else currentState
                 }
             }
 
             ACTION_STOP_RECORDING -> stopRecordingSessionAndService()
             ACTION_NOTIFICATION_DISMISSED -> {
-                AppLogger.d(TAG, "Ongoing foreground service notification dismissed by user (Android 14+), reposting.")
+                AppLogger.d( "Ongoing foreground service notification dismissed by user (Android 14+), reposting.")
                 updateNotification()
             }
         }
@@ -280,8 +271,9 @@ class RecordingForegroundService : Service() {
     override fun onDestroy() {
         // Always clean up, even if the OS kills the service mid-recording.
         // This is the guaranteed last callback before the service process is cleaned up.
-        AppLogger.v(TAG, "RecordingForegroundService is destroying... Ensuring cleanup...")
+        AppLogger.v( "RecordingForegroundService is destroying... Ensuring cleanup...")
         serviceScope.cancel()
+        overlayController.hideOverlay()
         stopRecordingSessionAndService()
         shizukuManager.unbind()
         if (appPreferences.isShizukuAutoManageEnabled() && !appPreferences.isShizukuKeepAliveEnabled()) {
@@ -291,14 +283,15 @@ class RecordingForegroundService : Service() {
     }
 
     // ── Service internal logic ───────────────────────────────────────
+
     /**
      * Orchestrates the recording state at the Service level.
      * Creates a new [AudioRecordingEngine], starts the I/O pipeline, updates the visible notification,
      * and handles fatal [PipelineInitializationException].
      */
     private fun startNewRecordingSession(service: IShellService, metadata: EnrichedCallData) {
-        if (hasSession) {
-            AppLogger.w(TAG, "startNewRecordingSession() called while already active – ignoring")
+        if (_serviceState.value.isRecordingActive) {
+            AppLogger.w( "startNewRecordingSession() called while already active – ignoring")
             return
         }
 
@@ -309,14 +302,14 @@ class RecordingForegroundService : Service() {
             // 2. Try to start the pipeline
             activeSession.startPipeline(this, service, metadata)
             // 3. Success
-            currentState = RecordingServiceState.Active(activeSession, false, metadata)
-            AppLogger.i(TAG, "Recording pipeline started successfully")
+            _serviceState.update { RecordingServiceState.Active(activeSession, false, metadata) }
+            AppLogger.i( "Recording pipeline started successfully")
         } catch (e: PipelineInitializationException) {
-            AppLogger.e(TAG, e.message ?: "", e.cause ?: e)
+            AppLogger.e( e.message ?: "", e.cause ?: e)
             notificationHelper.showErrorNotification(e.userFriendlyMessage)
             // Ensure partial resources are cleaned up
             activeSession.cancel(this, shellService)
-            currentState = RecordingServiceState.Standby(metadata)
+            _serviceState.update { RecordingServiceState.Standby(metadata) }
             stopRecordingSessionAndService()
         }
     }
@@ -329,113 +322,51 @@ class RecordingForegroundService : Service() {
      * removes the foreground notification, and stops the service.
      */
     private fun stopRecordingSessionAndService() {
-        val activeSession = (currentState as? RecordingServiceState.Active)?.engine
+        val activeSession = (_serviceState.value as? RecordingServiceState.Active)?.engine
         if (activeSession == null) {
-            AppLogger.d(TAG, "No active session, exiting standby state, removing foreground notification and stopping service.")
+            AppLogger.d( "No active session, exiting standby state, removing foreground notification and stopping service.")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf() // Stop the service since the session is over
             return
         }
-        AppLogger.i(TAG, "Stopping active recording session, remove foreground notification and stopping service...")
-
-        // Capture metadata before releasing resources, in case we need to query call logs for the final file name if phone number is empty.
-        val originalMetadata = activeSession.initializationMetadata
-        val uriToRename = activeSession.currentRecordingUri
+        AppLogger.i( "Stopping active recording session, remove foreground notification and stopping service...")
 
         // Release all resources held by the recording session, and stop the remote shell service, finalizing the recording file.
         activeSession.release(shellService)
 
-        // If the initialization metadata do not contain a phone number, we attempt to query the call log as a fallback.
-        // TODO: Remove this fallback logic once we have a more reliable way to get phone number (using Shizuku and hidden api)
-        if (originalMetadata != null && originalMetadata.normalisedPhoneNumber.isNullOrBlank() && uriToRename != null) {
-            AppLogger.d(TAG, "Recording ended without a phone number. Querying CallLog as a fallback to get more information...")
-            // We use GlobalScope/IO because the Service's scope might be cancelled immediately in onDestroy.
-            // Android gives the process some time to live, so this is safe for a few seconds.
-            CoroutineScope(Dispatchers.IO).launch {
-                val rawNumber = tryGetFinalNumberFromLog(applicationContext, originalMetadata.direction) ?: ""
-                val sanitizedRaw = PhoneNumberManager.normalisePhoneNumber(rawNumber)
-
-                val finalNumber = if (sanitizedRaw.isNotBlank()) {
-                    val parsed = phoneNumberManager.parsePhoneNumber(sanitizedRaw)
-                    if (parsed != null) {
-                        phoneNumberManager.formatToE164(parsed)
+        // If the user has enabled post-recording file actions, show a notification with options.
+        if (appPreferences.isPostRecordingFileActionsNotificationEnabled()) {
+            activeSession.currentRecordingUri?.let { filePathUri ->
+                activeSession.initializationMetadata?.let { metadata ->
+                    // Ensure the file was written and exists
+                    val docFile = DocumentFile.fromSingleUri(applicationContext, filePathUri)
+                    if (docFile != null && docFile.exists() && docFile.length() > 0) {
+                        AppLogger.d( "Showing post-recording notification for user actions.")
+                        notificationHelper.showPostCallNotification(filePathUri, metadata)
                     }
-                    sanitizedRaw
-                } else {
-                    sanitizedRaw
-                }
-
-                if (finalNumber.isNotBlank()) {
-                    val updatedMeta = originalMetadata.copy(normalisedPhoneNumber = finalNumber)
-                    val newName = RecordingFileNameFormatter.formatFileName(applicationContext, updatedMeta, activeSession.currentCodecEnum)
-                    try {
-                        DocumentFile.fromSingleUri(applicationContext, uriToRename)
-                            ?.renameTo(newName)
-                        AppLogger.d(TAG, "Successfully renamed wrongly detected anonymous recording to: $newName")
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "Failed to rename file using CallLog fallback", e)
-                    }
-                } else {
-                    AppLogger.d(TAG, "Call log confirmed the call is anonymous, or no actual number was found. Keeping file name as is.")
                 }
             }
         }
-        currentState = RecordingServiceState.Standby(null)
-        AppLogger.i(TAG, "The recording session has been stopped and resources have been released. Stopping foreground service. Goodbye >3")
+
+        _serviceState.update { RecordingServiceState.Standby(null) }
+        AppLogger.i( "The recording session has been stopped and resources have been released. Stopping foreground service. Goodbye >3")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf() // Stop the service since the session is over
-    }
-
-    /**
-     * Tries to query the call log for the most recent call matching the given direction, and returns the associated phone number.
-     * @return The phone number from the most recent call log entry matching the direction, or null if no valid entry is found after multiple attempts.
-     */
-    private suspend fun tryGetFinalNumberFromLog(
-        context: Context,
-        direction: CallDirection?
-    ): String? {
-        val typeSelection = when (direction) {
-            // We do not want to include missed or rejected calls here since they are useless to us, and in a Dual-call scenario could lead to picking the wrong number.
-            CallDirection.INCOMING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.INCOMING_TYPE}"
-            CallDirection.OUTGOING -> "${CallLog.Calls.TYPE} = ${CallLog.Calls.OUTGOING_TYPE}"
-            else -> null
-        }
-        // Try multiples times with a delay in case the OS didn't write the call log entry yet (only written after the call ended).
-        for (i in 1..4) {
-            try {
-                val cursor = context.contentResolver.query(
-                    CallLog.Calls.CONTENT_URI,
-                    arrayOf(CallLog.Calls.NUMBER),
-                    typeSelection, null,
-                    "${CallLog.Calls.DATE} DESC"
-                )
-                cursor?.use {
-                    if (it.moveToFirst()) {
-                        return it.getString(0)
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "Failed to query call log for fallback number", e)
-            }
-            if (i < 4) delay(400)
-        }
-        return null
     }
 
     /**
      * Updates the foreground service notification based on the current state (Recording or Standby).
      */
     private fun updateNotification() {
-        val notification = notificationHelper.getNotification(currentState)
+        val notification = notificationHelper.getServiceNotification(_serviceState.value)
         startForegroundWithType(notification)
     }
 
 
     /**
      * Calls [startForeground] with the appropriate [ServiceInfo] foreground service type.
-     * Uses [ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE] on API 34+ as required by
-     * Android 14's FGS type enforcement; falls back to DATA_SYNC on API 30-33.
      *
+     * @see <a href="https://developer.android.com/guide/components/foreground-services#background-start-restriction">Foreground Service Restrictions (Android 12+)</a>
      * @param notification The notification to display while in the foreground.
      */
     private fun startForegroundWithType(notification: Notification) {

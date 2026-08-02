@@ -8,12 +8,31 @@
 
 package com.kitsumed.shizucallrecorder
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+
 import androidx.compose.foundation.layout.fillMaxSize
+
 import androidx.compose.foundation.layout.padding
+
 import androidx.compose.material3.Button
+
 import androidx.compose.material3.Text
+
+import androidx.compose.ui.Alignment
+
+import androidx.compose.ui.Modifier
+
+import androidx.compose.ui.res.stringResource
+
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,10 +42,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -119,82 +134,83 @@ fun AppNavigationScreen() {
 
     // -------- Show the right screen
     ShizucallrecorderTheme(darkTheme = darkTheme, dynamicColor = dynamicColor) {
-        when (screenState) {
-            AppScreen.Disclaimer -> DisclaimerScreen(
-                onContinue = {
-                    preferences.setDisclaimerAccepted(true)
-                    appNavViewModel.refresh()
-                }
-            )
+        AnimatedContent(
+            targetState = screenState,
+            transitionSpec = {
+                val movingForward = targetState.ordinal > initialState.ordinal
+                // Slide in from the right when moving forward (1), slide out to the left when moving forward (-1).
+                val slideDirection = if (movingForward) 1 else -1
 
-            AppScreen.Permissions -> PermissionsScreen(
-                status              = onboardingStatus,
-                onPermissionGranted = { appNavViewModel.refresh() }
-            )
+                val enterSpec = slideInHorizontally(tween(350)) { width -> width * slideDirection } + fadeIn(tween(350))
+                val exitSpec = slideOutHorizontally(tween(300)) { width -> -width * slideDirection } + fadeOut(tween(300))
 
-            AppScreen.Settings -> {
-                val lastReminderTime = preferences.getLastForcedReminderSupportProjectTimeInApp()
-                val currentTime = System.currentTimeMillis()
+                enterSpec togetherWith exitSpec
+            },
+            label = "AppScreenNavigationTransition"
+        ) { targetScreenState ->
+            when (targetScreenState) {
+                AppScreen.Disclaimer -> DisclaimerScreen(
+                    onContinue = {
+                        preferences.setDisclaimerAccepted(true)
+                        appNavViewModel.refresh()
+                    }
+                )
 
-                var mainDestination by remember { mutableStateOf(MainDestination.Settings) }
-                var selectedRecording by remember { mutableStateOf<RecordingItem?>(null) }
+                AppScreen.Permissions -> PermissionsScreen(
+                    status              = onboardingStatus,
+                    onPermissionGranted = { appNavViewModel.refresh() }
+                )
 
-                // Create a local state initialized by your time check
-                var showSponsorScreen by remember {
-                    // Check if it's been more than a year since the last reminder. 31536000000 milliseconds = 1 year.
-                    mutableStateOf(currentTime - lastReminderTime > 31536000000L)
-                }
+                AppScreen.Settings -> {
+                    val lastReminderTime = preferences.getLastForcedReminderSupportProjectTimeInApp()
+                    val currentTime = System.currentTimeMillis()
 
-                if (showSponsorScreen) {
-                    SponsorScreen( onDismiss = {
-                        preferences.setLastForcedReminderSupportProjectTimeInApp(currentTime)
-                        // We also update the notification time since it work by opening the app and then having this logic
-                        // show the sponsor screen. Showing it again after they have already seen it would be annoying.
-                        preferences.setLastForcedReminderSupportProjectTimeNotification(currentTime)
-                        showSponsorScreen = false // Trigger recompose
-                    })
-                } else {
-                    when (mainDestination) {
-                        MainDestination.Settings -> {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                SettingsScreen(
-                                    viewModel = settingsViewModel
-                                )
+                    var showSponsorScreen by remember {
+                        // Check if it's been more than a year since the last reminder. 31536000000 ms = 1 year.
+                        mutableStateOf(currentTime - lastReminderTime > 31536000000L)
+                    }
 
-                                Button(
-                                    onClick = { mainDestination = MainDestination.Recordings },
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .padding(24.dp)
-                                ) {
-                                    Text(text = stringResource(R.string.recordings_open_library))
+                    if (showSponsorScreen) {
+                        SponsorScreen(onDismiss = {
+                            preferences.setLastForcedReminderSupportProjectTimeInApp(currentTime)
+                            // We also update the notification time since it work by opening the app and then having this logic
+                            // show the sponsor screen. Showing it again after they have already seen it would be annoying.
+                            preferences.setLastForcedReminderSupportProjectTimeNotification(currentTime)
+                            showSponsorScreen = false // Trigger recompose
+                        })
+                    } else {
+                        var mainDestination by remember { mutableStateOf(MainDestination.Settings) }
+                        var selectedRecording by remember { mutableStateOf<RecordingItem?>(null) }
+
+                        when (mainDestination) {
+                            MainDestination.Settings -> {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    SettingsScreen(viewModel = settingsViewModel)
+                                    Button(
+                                        onClick = { mainDestination = MainDestination.Recordings },
+                                        modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
+                                    ) {
+                                        Text(text = stringResource(R.string.recordings_open_library))
+                                    }
                                 }
                             }
-                        }
-
-                        MainDestination.Recordings -> RecordingsScreen(
-                            onBack = { mainDestination = MainDestination.Settings },
-                            onRecordingClick = { recording ->
-                                selectedRecording = recording
-                                mainDestination = MainDestination.Playback
-                            }
-                        )
-
-                        MainDestination.Playback -> {
-                            val recording = selectedRecording
-                            if (recording == null) {
-                                RecordingsScreen(
-                                    onBack = { mainDestination = MainDestination.Settings },
-                                    onRecordingClick = { nextRecording ->
-                                        selectedRecording = nextRecording
-                                        mainDestination = MainDestination.Playback
-                                    }
-                                )
-                            } else {
-                                PlaybackScreen(
-                                    recording = recording,
-                                    onBack = { mainDestination = MainDestination.Recordings }
-                                )
+                            MainDestination.Recordings -> RecordingsScreen(
+                                onBack = { mainDestination = MainDestination.Settings },
+                                onRecordingClick = { recording ->
+                                    selectedRecording = recording
+                                    mainDestination = MainDestination.Playback
+                                }
+                            )
+                            MainDestination.Playback -> {
+                                val recording = selectedRecording
+                                if (recording == null) {
+                                    mainDestination = MainDestination.Recordings
+                                } else {
+                                    PlaybackScreen(
+                                        recording = recording,
+                                        onBack = { mainDestination = MainDestination.Recordings }
+                                    )
+                                }
                             }
                         }
                     }
@@ -207,6 +223,8 @@ fun AppNavigationScreen() {
 // -------- Private helpers
 
 /** The three top-level screens. [AppNavigationScreen] shows one of these at a time. */
+private enum class MainDestination { Settings, Recordings, Playback }
+
 private enum class AppScreen {
     /** The user has not yet accepted the legal disclaimer. */
     Disclaimer,
@@ -216,13 +234,6 @@ private enum class AppScreen {
 
     /** Everything is set up. Show the settings. */
     Settings
-}
-
-/** Secondary screens available after setup is complete. */
-private enum class MainDestination {
-    Settings,
-    Recordings,
-    Playback
 }
 
 /**

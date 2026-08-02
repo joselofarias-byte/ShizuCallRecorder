@@ -4,6 +4,10 @@
 [![GitHub Release](https://img.shields.io/github/v/release/kitsumed/ShizuCallRecorder?sort=semver&display_name=tag&style=for-the-badge&logo=testcafe&logoColor=white&label=Latest%20Release&labelColor=gray&color=blue)](https://github.com/kitsumed/ShizuCallRecorder/releases/latest)
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/kitsumed/ShizuCallRecorder/build-app.yml?style=for-the-badge&label=Build%20Workflow)](https://github.com/kitsumed/ShizuCallRecorder/actions/workflows/build-app.yml)
 
+[![F-Droid All Downloads Public Stats](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgithub.com%2Fkitswas%2Ffdroid-metrics-dashboard%2Fraw%2Frefs%2Fheads%2Fmain%2Fprocessed%2Ftotal%2Fcom.kitsumed.shizucallrecorder.json&query=%24.total_downloads&logo=fdroid&label=Downloads%20(F-Droid)&color=gold&style=for-the-badge
+)](https://f-droid.org/packages/com.kitsumed.shizucallrecorder/)
+[![IzzyOnDroid Yearly Downloads](https://img.shields.io/badge/dynamic/json?url=https://dlstats.izzyondroid.org/iod-stats-collector/stats/basic/yearly/rolling.json&query=$.['com.kitsumed.shizucallrecorder']&logo=android&style=for-the-badge&label=Yearly%20downloads%20(IzzyOnDroid)&color=gold)](https://apt.izzysoft.de/packages/com.kitsumed.shizucallrecorder)
+
 The first **non-root FOSS call recorder app for Android 11+**! ShizuCallRecorder empowers ADB through Shizuku to use an [advanced list of permissions given to the shell application](https://android.googlesource.com/platform/frameworks/base/+/android16-release/packages/Shell/AndroidManifest.xml).
 [Latest URL](https://cs.android.com/search?q=com.android.shell%20file:%2Fpackages%2FShell%2FAndroidManifest.xml).
 
@@ -36,7 +40,7 @@ It can also be seen as an on-device wrapper for [scrcpy-server](https://github.c
 <details>
 <summary><b>Android Tested Versions</b></summary>
 <b>I cannot extensively test all of these versions, so issues may arise. This table may change as more testing by other users is done.</b>
-    
+
 | Android Version | Supported | Note                                  |
 |-----------------|-----------|---------------------------------------|
 | 11              |**Limited**|**[Unlocked screen required](https://github.com/Genymobile/scrcpy/blob/3fcc177da5b6b4514d0e8e8d90d7d58d6731eac9/server/src/main/java/com/genymobile/scrcpy/audio/AudioDirectCapture.java#L56-L68)**, else it crash|
@@ -49,13 +53,13 @@ It can also be seen as an on-device wrapper for [scrcpy-server](https://github.c
 
 </details>
 
-> [!IMPORTANT]  
+> [!IMPORTANT]
 > This application makes use of hidden internal Android APIs. As such, it is prone to breaking in new Android releases or due to specific OEM modifications to the source code. There are multiple breaking points and dependencies. The two main ones right now are [scrcpy-server](https://github.com/genymobile/scrcpy) and Shizuku.
 
 ## Installation
 ⚠️⚠️⬇️**YOU WILL NEED TO DO SOME INITIAL CONFIGURATIONS**.⬇️⚠️⚠️
 
-**Please follow the installation instructions in the [SUPPORT documentation](./docs/SUPPORT.md)** under **Installation & Configuration**. 
+**Please follow the installation instructions in the [SUPPORT documentation](./docs/SUPPORT.md)** under **Installation & Configuration**.
 
 You can download the latest version [here](https://github.com/kitsumed/ShizuCallRecorder/releases/latest).
 
@@ -98,11 +102,3 @@ In some cases, certain features, like automatic call recording, may not be legal
 > Because deterministic behavior of the application cannot be guaranteed, it is your responsibility to:
 > 1. Ensure the recording behavior and your application settings aligns with your intent and the specific requirements in your jurisdiction.
 > 2. **Monitor the app's behavior** on your specific device. If you observe any behavior that does not comply with your local laws, you **must immediately cease any activity that constitutes a legal infraction** (For example, hanging up the call, deleting the audio files, etc).
-
-
-## Star History
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=kitsumed/ShizuCallRecorder&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=kitsumed/ShizuCallRecorder&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=kitsumed/ShizuCallRecorder&type=date&legend=top-left" />
- </picture>

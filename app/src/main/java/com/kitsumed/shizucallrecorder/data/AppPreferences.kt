@@ -27,8 +27,6 @@ class AppPreferences(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "shizucallrecorder_prefs"
-
-        private const val TAG = "SCR:AppPreferences"
     }
 
     /**
@@ -41,17 +39,18 @@ class AppPreferences(context: Context) {
 
         // Calculates (Install Time - 10 Months) to leave exactly 2 months remaining
         fun LAST_FORCED_REMINDER_SUPPORT_PROJECT_TIME(context: Context): Long = (runCatching { context.packageManager.getPackageInfo(context.packageName, 0).firstInstallTime }.getOrDefault(Long.MIN_VALUE)) - 25920000000L // 300 days in milliseconds
-        
+
         // --- Storage & General ---
         val RECORDING_FOLDER_URI: String? = null
         const val VIBRATION_ENABLED = true
         val CALL_DETECTION_MODE = CallDetectionMode.getDefaultModeForDevice().key
         const val RECORD_THIRD_PARTY_CALLS = false
-        
-        // --- Automation ---
+
+        const val POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ENABLED = false
         const val AUTO_RECORD_INCOMING = false
         const val AUTO_RECORD_OUTGOING = false
-        
+
+
         // --- Filters & Contacts ---
         const val IGNORE_ANONYMOUS_INCOMING = false
         const val IGNORE_CROSS_COUNTRY_INCOMING = false
@@ -60,12 +59,12 @@ class AppPreferences(context: Context) {
         val IGNORE_CONTACTS_MODE_OUTGOING = IgnoreContactsMode.NONE
         val IGNORED_CONTACTS_INCOMING = emptySet<String>()
         val IGNORED_CONTACTS_OUTGOING = emptySet<String>()
-        
+
         // --- Developer & Debug ---
         const val LOGGING_ENABLED = false
         const val DEBUG_ENABLED = false
         const val DEBUG_CALLER_NUMBER = ""
-        
+
         // --- Audio/Scrcpy Quality ---
         val AUDIO_SOURCE = ScrcpyAudioSource.VOICE_CALL.cliKey
         val AUDIO_CODEC = ScrcpyAudioCodec.OPUS.cliKey
@@ -79,6 +78,8 @@ class AppPreferences(context: Context) {
         val THEME_MODE = ThemeMode.SYSTEM
         const val DYNAMIC_COLOR = true
         const val SHOW_TOASTS = true
+        const val SHOW_RECORDING_OVERLAY = false
+        const val OVERLAY_Y_POSITION = -1
         // --- Security ---
         const val SHIZUKU_AUTO_MANAGE = false
         const val SHIZUKU_START_ON_RECORD = false
@@ -103,6 +104,7 @@ class AppPreferences(context: Context) {
         // --- Others ---
         RECORDING_FOLDER_URI("recording_folder_uri"),
         VIBRATION_ENABLED("vibration_enabled"),
+        POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ENABLED ("post_recording_file_actions_notification_enabled"),
         AUTO_RECORD_INCOMING("auto_record_incoming"),
         AUTO_RECORD_OUTGOING("auto_record_outgoing"),
         IGNORE_ANONYMOUS_INCOMING("ignore_anonymous_incoming"),
@@ -122,6 +124,8 @@ class AppPreferences(context: Context) {
         THEME_MODE("theme_mode"),
         DYNAMIC_COLOR("dynamic_color"),
         SHOW_TOASTS("show_toasts"),
+        SHOW_RECORDING_OVERLAY("show_recording_overlay"),
+        OVERLAY_Y_POSITION("overlay_y_position"),
         SHIZUKU_AUTO_MANAGE("shizuku_auto_manage"),
         SHIZUKU_START_ON_RECORD("shizuku_start_on_record"),
         SHIZUKU_KEEP_ALIVE("shizuku_keep_alive"),
@@ -208,7 +212,7 @@ class AppPreferences(context: Context) {
 
     /** Checks if the user has accepted the disclaimer. */
     fun isDisclaimerAccepted() = getBoolean(Key.DISCLAIMER_ACCEPTED, DefaultsValue.DISCLAIMER_ACCEPTED)
-    
+
     /** Sets whether the user has accepted the disclaimer. */
     fun setDisclaimerAccepted(accepted: Boolean) = setBoolean(Key.DISCLAIMER_ACCEPTED, accepted)
 
@@ -228,15 +232,20 @@ class AppPreferences(context: Context) {
 
     /** Gets the user-selected folder URI for storing recordings. */
     fun getRecordingFolderUri(): Uri? = getString(Key.RECORDING_FOLDER_URI, DefaultsValue.RECORDING_FOLDER_URI)?.toUri()
-    
+
     /** Sets the user-selected folder URI for storing recordings. */
     fun setRecordingFolderUri(uri: Uri?) = setString(Key.RECORDING_FOLDER_URI, uri?.toString())
 
     /** Checks if vibration is enabled for notifications/actions. */
     fun isVibrationEnabled() = getBoolean(Key.VIBRATION_ENABLED, DefaultsValue.VIBRATION_ENABLED)
-    
+
     /** Sets whether vibration is enabled. */
     fun setVibrationEnabled(enabled: Boolean) = setBoolean(Key.VIBRATION_ENABLED, enabled)
+
+    /** Checks if post-recording file actions notification is enabled. */
+    fun isPostRecordingFileActionsNotificationEnabled() = getBoolean(Key.POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ENABLED, DefaultsValue.POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ENABLED)
+    /** Sets whether post-recording file actions notification is enabled. */
+    fun setPostRecordingFileActionsNotificationEnabled(enabled: Boolean) = setBoolean(Key.POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ENABLED, enabled)
 
     /**
      * Gets the current preferred detection mode, automatically falling back
@@ -247,7 +256,7 @@ class AppPreferences(context: Context) {
         val savedMode = try {
             CallDetectionMode.fromKey(savedKey)
         } catch (e: IllegalArgumentException) {
-            AppLogger.e(TAG, "Invalid saved CallDetectionMode key: $savedKey, falling back to default. Error: ${e.message}")
+            AppLogger.e( "Invalid saved CallDetectionMode key: $savedKey, falling back to default. Error: ${e.message}")
             CallDetectionMode.getDefaultModeForDevice()
         }
 
@@ -255,7 +264,7 @@ class AppPreferences(context: Context) {
         return if (savedMode.isSupportedOnCurrentApi()) {
             savedMode
         } else {
-            AppLogger.w(TAG, "Saved CallDetectionMode ${savedMode.key} is not supported on current API level, falling back to default.")
+            AppLogger.w( "Saved CallDetectionMode ${savedMode.key} is not supported on current API level, falling back to default.")
             CallDetectionMode.getDefaultModeForDevice()
         }
     }
@@ -280,13 +289,13 @@ class AppPreferences(context: Context) {
 
     /** Checks if auto-recording for incoming calls is enabled. */
     fun isAutoRecordIncomingEnabled() = getBoolean(Key.AUTO_RECORD_INCOMING, DefaultsValue.AUTO_RECORD_INCOMING)
-    
+
     /** Sets whether auto-recording for incoming calls is enabled. */
     fun setAutoRecordIncomingEnabled(enabled: Boolean) = setBoolean(Key.AUTO_RECORD_INCOMING, enabled)
 
     /** Checks if auto-recording for outgoing calls is enabled. */
     fun isAutoRecordOutgoingEnabled() = getBoolean(Key.AUTO_RECORD_OUTGOING, DefaultsValue.AUTO_RECORD_OUTGOING)
-    
+
     /** Sets whether auto-recording for outgoing calls is enabled. */
     fun setAutoRecordOutgoingEnabled(enabled: Boolean) = setBoolean(Key.AUTO_RECORD_OUTGOING, enabled)
 
@@ -294,44 +303,44 @@ class AppPreferences(context: Context) {
 
     /** Checks if recording should be ignored for incoming anonymous calls. */
     fun isIgnoreAnonymousIncomingEnabled() = getBoolean(Key.IGNORE_ANONYMOUS_INCOMING, DefaultsValue.IGNORE_ANONYMOUS_INCOMING)
-    
+
     /** Sets whether to ignore recording for incoming anonymous calls. */
     fun setIgnoreAnonymousIncomingEnabled(enabled: Boolean) = setBoolean(Key.IGNORE_ANONYMOUS_INCOMING, enabled)
 
     /** Checks if recording should be ignored for incoming cross-country calls. */
     fun isIgnoreCrossCountryIncomingEnabled() = getBoolean(Key.IGNORE_CROSS_COUNTRY_INCOMING, DefaultsValue.IGNORE_CROSS_COUNTRY_INCOMING)
-    
+
     /** Sets whether to ignore recording for incoming cross-country calls. */
     fun setIgnoreCrossCountryIncomingEnabled(enabled: Boolean) = setBoolean(Key.IGNORE_CROSS_COUNTRY_INCOMING, enabled)
 
     /** Checks if recording should be ignored for outgoing cross-country calls. */
     fun isIgnoreCrossCountryOutgoingEnabled() = getBoolean(Key.IGNORE_CROSS_COUNTRY_OUTGOING, DefaultsValue.IGNORE_CROSS_COUNTRY_OUTGOING)
-    
+
     /** Sets whether to ignore recording for outgoing cross-country calls. */
     fun setIgnoreCrossCountryOutgoingEnabled(enabled: Boolean) = setBoolean(Key.IGNORE_CROSS_COUNTRY_OUTGOING, enabled)
 
     /** Gets the contacts mode defining which incoming calls are ignored. */
     fun getIgnoreContactsModeIncoming() = IgnoreContactsMode.fromKey(getString(Key.IGNORE_CONTACTS_MODE_INCOMING, DefaultsValue.IGNORE_CONTACTS_MODE_INCOMING.key))
-    
+
     /** Sets the contacts mode defining which incoming calls are ignored. */
     fun setIgnoreContactsModeIncoming(mode: IgnoreContactsMode) = setString(Key.IGNORE_CONTACTS_MODE_INCOMING, mode.key)
 
     /** Gets the contacts mode defining which outgoing calls are ignored. */
     fun getIgnoreContactsModeOutgoing() = IgnoreContactsMode.fromKey(getString(Key.IGNORE_CONTACTS_MODE_OUTGOING, DefaultsValue.IGNORE_CONTACTS_MODE_OUTGOING.key))
-    
+
     /** Sets the contacts mode defining which outgoing calls are ignored. */
     fun setIgnoreContactsModeOutgoing(mode: IgnoreContactsMode) = setString(Key.IGNORE_CONTACTS_MODE_OUTGOING, mode.key)
 
-    /** Gets the set of specific contact numbers to ignore for incoming calls. */
+    /** Gets the set of specific contact lookup id to ignore for incoming calls. */
     fun getIgnoredContactsIncoming() = getStringSet(Key.IGNORED_CONTACTS_INCOMING, DefaultsValue.IGNORED_CONTACTS_INCOMING)
-    
-    /** Sets the set of specific contact numbers to ignore for incoming calls. */
+
+    /** Sets the set of specific contact lookup id to ignore for incoming calls. */
     fun setIgnoredContactsIncoming(numbers: Set<String>) = setStringSet(Key.IGNORED_CONTACTS_INCOMING, numbers)
 
-    /** Gets the set of specific contact numbers to ignore for outgoing calls. */
+    /** Gets the set of specific contact lookup id to ignore for outgoing calls. */
     fun getIgnoredContactsOutgoing() = getStringSet(Key.IGNORED_CONTACTS_OUTGOING, DefaultsValue.IGNORED_CONTACTS_OUTGOING)
-    
-    /** Sets the set of specific contact numbers to ignore for outgoing calls. */
+
+    /** Sets the set of specific contact lookup id to ignore for outgoing calls. */
     fun setIgnoredContactsOutgoing(numbers: Set<String>) = setStringSet(Key.IGNORED_CONTACTS_OUTGOING, numbers)
 
     // -------- Debug --------
@@ -344,13 +353,13 @@ class AppPreferences(context: Context) {
 
     /** Checks if debug features are enabled. */
     fun isDebugEnabled() = getBoolean(Key.DEBUG_ENABLED, DefaultsValue.DEBUG_ENABLED)
-    
+
     /** Sets whether debug features are enabled. */
     fun setDebugEnabled(enabled: Boolean) = setBoolean(Key.DEBUG_ENABLED, enabled)
 
     /** Gets the caller number override used for debugging. */
     fun getDebugCallerNumber() = getString(Key.DEBUG_CALLER_NUMBER, DefaultsValue.DEBUG_CALLER_NUMBER) ?: DefaultsValue.DEBUG_CALLER_NUMBER
-    
+
     /** Sets the caller number override used for debugging. */
     fun setDebugCallerNumber(number: String) = setString(Key.DEBUG_CALLER_NUMBER, number)
 
@@ -358,13 +367,13 @@ class AppPreferences(context: Context) {
 
     /** Gets the configured audio source for scrcpy integration. */
     fun getAudioSource() = getString(Key.AUDIO_SOURCE, DefaultsValue.AUDIO_SOURCE) ?: DefaultsValue.AUDIO_SOURCE
-    
+
     /** Sets the configured audio source. */
     fun setAudioSource(source: String) = setString(Key.AUDIO_SOURCE, source)
 
     /** Gets the configured audio codec for scrcpy integration. */
     fun getAudioCodec() = getString(Key.AUDIO_CODEC, DefaultsValue.AUDIO_CODEC) ?: DefaultsValue.AUDIO_CODEC
-    
+
     /** Sets the configured audio codec. */
     fun setAudioCodec(codec: String) = setString(Key.AUDIO_CODEC, codec)
 
@@ -400,13 +409,13 @@ class AppPreferences(context: Context) {
 
     /** Gets the current UI theme mode. */
     fun getThemeMode() = ThemeMode.fromKey(getString(Key.THEME_MODE, DefaultsValue.THEME_MODE.key))
-    
+
     /** Sets the current UI theme mode. */
     fun setThemeMode(mode: ThemeMode) = setString(Key.THEME_MODE, mode.key)
 
     /** Checks if dynamic color (Material You) is enabled. */
     fun isDynamicColorEnabled() = getBoolean(Key.DYNAMIC_COLOR, DefaultsValue.DYNAMIC_COLOR)
-    
+
     /** Sets whether dynamic color is enabled. */
     fun setDynamicColorEnabled(enabled: Boolean) = setBoolean(Key.DYNAMIC_COLOR, enabled)
 
@@ -415,6 +424,18 @@ class AppPreferences(context: Context) {
 
     /** Sets whether toast notifications are enabled. */
     fun setShowToastsEnabled(enabled: Boolean) = setBoolean(Key.SHOW_TOASTS, enabled)
+
+    /** Checks if the recording overlay is enabled. */
+    fun isOverlayEnabled() = getBoolean(Key.SHOW_RECORDING_OVERLAY, DefaultsValue.SHOW_RECORDING_OVERLAY)
+
+    /** Sets whether the recording overlay is enabled. */
+    fun setOverlayEnabled(enabled: Boolean) = setBoolean(Key.SHOW_RECORDING_OVERLAY, enabled)
+
+    /** Gets the Y position of the recording overlay. */
+    fun getOverlayYPosition() = getInt(Key.OVERLAY_Y_POSITION, DefaultsValue.OVERLAY_Y_POSITION)
+
+    /** Sets the Y position of the recording overlay. */
+    fun setOverlayYPosition(y: Int) = setInt(Key.OVERLAY_Y_POSITION, y)
 
     // -------- Security --------
 

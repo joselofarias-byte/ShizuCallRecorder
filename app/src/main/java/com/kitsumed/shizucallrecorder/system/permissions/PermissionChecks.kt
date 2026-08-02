@@ -9,12 +9,10 @@
 package com.kitsumed.shizucallrecorder.system.permissions
 
 import android.Manifest
-import android.app.AppOpsManager
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.PowerManager
-import android.os.Process
+import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
@@ -30,14 +28,7 @@ object PermissionChecks {
      * @return true if the app can post notifications.
      */
     fun hasNotificationPermission(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            NotificationManagerCompat.from(context).areNotificationsEnabled()
-        } else {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        }
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 
     /**
@@ -66,5 +57,15 @@ object PermissionChecks {
     fun hasBatteryExemption(context: Context): Boolean {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    /**
+     * Returns true if the app is allowed to draw overlays on top of other apps.
+     *
+     * @param context The app context.
+     * @return true if the app can draw overlays.
+     */
+    fun hasOverlayPermission(context: Context): Boolean {
+        return Settings.canDrawOverlays(context)
     }
 }
