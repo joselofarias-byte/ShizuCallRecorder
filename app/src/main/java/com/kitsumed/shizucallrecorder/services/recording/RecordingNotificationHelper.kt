@@ -16,6 +16,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import com.kitsumed.shizucallrecorder.R
 import com.kitsumed.shizucallrecorder.data.AppPreferences
+import com.kitsumed.shizucallrecorder.data.call.EnrichedCallData
 import com.kitsumed.shizucallrecorder.ui.theme.Green40
 
 class RecordingNotificationHelper(private val context: Context) {
@@ -34,9 +36,14 @@ class RecordingNotificationHelper(private val context: Context) {
     companion object {
         const val CHANNEL_ID_SERVICE = "recording_channel_service"
         const val CHANNEL_ID_ERROR = "recording_channel_error"
+        const val CHANNEL_ID_POST_RECORDING_FILE_ACTIONS = "recording_channel_post_recording_file_actions"
 
         const val SERVICE_NOTIFICATION_ID = 1
         const val ERROR_NOTIFICATION_ID = 2
+        const val POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ID = 3
+        private const val REQUEST_CODE_OPEN_RECORDING = 1001
+        private const val REQUEST_CODE_SHARE_RECORDING = 1002
+        private const val REQUEST_CODE_DELETE_RECORDING = 1003
     }
 
     /**
@@ -46,10 +53,12 @@ class RecordingNotificationHelper(private val context: Context) {
     fun createNotificationChannels() {
         val manager = context.getSystemService(NotificationManager::class.java)
 
+        // Recording Group
         val groupId = "recording_channel_group"
-        val group = NotificationChannelGroup(groupId, "Recording Channel")
+        val group = NotificationChannelGroup(groupId, "Recording Group")
         manager.createNotificationChannelGroup(group)
 
+        // Recording Service Channel
         val serviceChannel = NotificationChannel(
             CHANNEL_ID_SERVICE, "Foreground Recording Service", NotificationManager.IMPORTANCE_HIGH
         ).apply {
@@ -63,6 +72,7 @@ class RecordingNotificationHelper(private val context: Context) {
         }
         manager.createNotificationChannel(serviceChannel)
 
+        // Error Channel
         val errorChannel = NotificationChannel(
             CHANNEL_ID_ERROR, "Recording Errors", NotificationManager.IMPORTANCE_HIGH
         ).apply {
@@ -72,9 +82,28 @@ class RecordingNotificationHelper(private val context: Context) {
             lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
         }
         manager.createNotificationChannel(errorChannel)
+
+        // Post Recording File Actions Channel
+        val postCallChannel = NotificationChannel(CHANNEL_ID_POST_RECORDING_FILE_ACTIONS,
+            "Post-Call Quick Actions",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            this.group = groupId
+            setSound(null, null)
+            enableLights(false)
+            enableVibration(false)
+            setShowBadge(true)
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
+        }
+        manager.createNotificationChannel(postCallChannel)
     }
 
-    fun getNotification(state: RecordingServiceState): Notification {
+    /**
+     * Creates a notification for the recording service based on the current state.
+     * @param state The current state of the recording service.
+     * @return A Notification object that can be used to update the foreground service notification.
+     */
+    fun getServiceNotification(state: RecordingServiceState): Notification {
         val titleRes: Int
         val contentRes: Int
         val actionIcon: Int?
@@ -106,7 +135,7 @@ class RecordingNotificationHelper(private val context: Context) {
                     actionIntentAction = RecordingForegroundService.ACTION_PAUSE_RECORDING
                 }
             }
-            else -> {
+            is RecordingServiceState.Standby -> {
                 titleRes = R.string.recording_standby_notification_title
                 contentRes = R.string.recording_notification_press_to_start
                 actionIcon = R.drawable.ic_mic
@@ -137,8 +166,8 @@ class RecordingNotificationHelper(private val context: Context) {
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .setColor(Green40.toArgb())
-            .setColorized(state is RecordingServiceState.Active && !state.isPaused)
-            .setSilent(state is RecordingServiceState.Active || state is RecordingServiceState.Starting) // Don't do a screen-incursion if we are already recording.
+            .setColorized(state.isRecordingActive && !state.isRecordingPaused)
+            .setSilent(state.isStarting || state.isRecordingActive) // Don't do a screen-incursion if we are already recording.
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
 
         if (actionText != null && actionIntentAction != null && actionIcon != null) {
@@ -164,28 +193,28 @@ class RecordingNotificationHelper(private val context: Context) {
         if (oldState == newState) return // Ignore duplicates
 
         when (newState) {
-            is RecordingServiceState.Standby -> {
+            is RecordingServiceState.Standby  -> {
                 if (newState.metadata == null) {
                     showToast(context.getString(R.string.recording_toast_ended))
                     vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), intArrayOf(0, 64, 0, 128), -1))
-                } else if (oldState !is RecordingServiceState.Standby) {
+                } else {
                     val dirLabel = newState.metadata.direction.labelResId.let { context.getString(it) }
                     showToast(context.getString(R.string.recording_toast_standby, dirLabel))
                 }
             }
-            is RecordingServiceState.Active -> {
-                val wasActive = oldState is RecordingServiceState.Active
-                val wasPaused = wasActive && (oldState as RecordingServiceState.Active).isPaused
 
-                if (newState.isPaused && (!wasActive || !wasPaused)) {
+            is RecordingServiceState.Active -> {
+                val wasActiveAndPaused = oldState.isRecordingPaused
+
+                if (newState.isPaused && !wasActiveAndPaused) {
                     // Recording was paused
                     showToast(context.getString(R.string.recording_toast_paused))
                     vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), intArrayOf(0, 64, 0, 128), -1))
-                } else if (!newState.isPaused && wasPaused) {
+                } else if (!newState.isPaused && wasActiveAndPaused) {
                     // Recording was resumed
                     showToast(context.getString(R.string.recording_toast_resumed))
                     vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), intArrayOf(0, 64, 0, 128), -1))
-                } else if (!newState.isPaused && !wasActive) {
+                } else if (!newState.isPaused) {
                     // Recording was started
                     showToast(context.getString(R.string.recording_started))
                     vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), intArrayOf(0, 64, 0, 128), -1))
@@ -193,6 +222,73 @@ class RecordingNotificationHelper(private val context: Context) {
             }
             else -> {}
         }
+    }
+
+    /**
+     * Shows a notification after a call recording has been completed, allowing the user to play, share, or delete the recording.
+     * @param fileUri The URI of the recorded audio file.
+     * @param callMetadata Metadata about the recorded call.
+     */
+    fun showPostCallNotification(fileUri: Uri, callMetadata: EnrichedCallData) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+
+        // Resolve the target first and pin it to the Intent before wrapping it in a PendingIntent.
+        // This prevents another application from intercepting or replacing the PendingIntent target.
+        val playIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(fileUri, "audio/*")
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        val playPendingIntent = playIntent.resolveActivity(context.packageManager)?.let { target ->
+            playIntent.component = target
+            PendingIntent.getActivity(
+                context,
+                REQUEST_CODE_OPEN_RECORDING,
+                playIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "audio/*"
+            putExtra(Intent.EXTRA_STREAM, fileUri)
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        val chooserIntent = Intent.createChooser(shareIntent, null)
+        val sharePendingIntent = chooserIntent.resolveActivity(context.packageManager)?.let { target ->
+            chooserIntent.component = target
+            PendingIntent.getActivity(
+                context,
+                REQUEST_CODE_SHARE_RECORDING,
+                chooserIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        // Delete action (Triggers our DeleteDialogConfirmationActivity)
+        val deleteIntent = Intent(context, DeleteDialogConfirmationActivity::class.java).apply {
+            putExtra(Intent.EXTRA_STREAM, fileUri)
+        }
+        val deletePendingIntent = PendingIntent.getActivity(
+            context, REQUEST_CODE_DELETE_RECORDING, deleteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_POST_RECORDING_FILE_ACTIONS)
+            .setSmallIcon(R.drawable.ic_audio_file)
+            .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher))
+            .setContentTitle(context.getString(R.string.post_recording_notification_title))
+            .setContentText(callMetadata.getBestNumber().takeIf { it.isNotEmpty() } ?: context.getString(R.string.post_recording_notification_unknown_caller))
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+
+        playPendingIntent?.let {
+            builder.addAction(android.R.drawable.ic_media_play, context.getString(R.string.general_play), it)
+        }
+        sharePendingIntent?.let {
+            builder.addAction(android.R.drawable.ic_menu_share, context.getString(R.string.general_share), it)
+        }
+        builder.addAction(android.R.drawable.ic_menu_delete, context.getString(R.string.general_delete), deletePendingIntent)
+
+        manager.notify(POST_RECORDING_FILE_ACTIONS_NOTIFICATION_ID, builder.build())
     }
 
     /**
@@ -213,7 +309,7 @@ class RecordingNotificationHelper(private val context: Context) {
      */
     fun showErrorNotification(message: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ERROR)
-            .setSmallIcon(R.drawable.ic_mic)
+            .setSmallIcon(R.drawable.ic_outline_error)
             .setContentTitle(context.getString(R.string.recording_error_title))
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))

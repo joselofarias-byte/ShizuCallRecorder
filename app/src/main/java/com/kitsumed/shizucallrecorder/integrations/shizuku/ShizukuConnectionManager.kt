@@ -21,7 +21,8 @@ import android.content.pm.PackageManager
 import android.os.IBinder
 import com.kitsumed.shizucallrecorder.BuildConfig
 import com.kitsumed.shizucallrecorder.IShellService
-import com.kitsumed.shizucallrecorder.services.ShellService
+import com.kitsumed.shizucallrecorder.data.AppPreferences
+import com.kitsumed.shizucallrecorder.services.shell.ShellService
 import com.kitsumed.shizucallrecorder.utils.AppLogger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -46,8 +47,6 @@ class ShizukuConnectionManager(
 ) {
 
     companion object {
-        private const val TAG = "SCR:ShizukuConnectionManager"
-
         /**
          * This permission code is used to identify the permission request when the user responds to the diaAppLogger. It can be any unique integer.
          */
@@ -62,7 +61,7 @@ class ShizukuConnectionManager(
             return try {
                 Shizuku.pingBinder()
             } catch (e: Exception) {
-                AppLogger.w(TAG, "Shizuku unavailable: ${e.message}", e)
+                AppLogger.w( "Shizuku unavailable: ${e.message}", e)
                 false
             }
         }
@@ -81,13 +80,13 @@ class ShizukuConnectionManager(
                     return Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
                 } else {
                     if (context == null) {
-                        AppLogger.v(TAG, "Cannot check permission via Shizuku API. Context is null, will not perform potentially out-of-sync Android permission check fallback. High probability of being the intended behavior, but might not.")
+                        AppLogger.v( "Cannot check permission via Shizuku API. Context is null, will not perform potentially out-of-sync Android permission check fallback. High probability of being the intended behavior, but might not.")
                         return false
                     }
                     return context.checkSelfPermission(ShizukuProvider.PERMISSION) == PackageManager.PERMISSION_GRANTED
                 }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Error while checking Shizuku permission", e)
+                AppLogger.e( "Error while checking Shizuku permission", e)
                 false
             }
         }
@@ -104,22 +103,22 @@ class ShizukuConnectionManager(
                     val result = Shizuku.checkRemotePermission(permissionName)
                     when (result) {
                         PackageManager.PERMISSION_GRANTED -> {
-                            AppLogger.d(TAG, "Remote Shizuku server has permission: $permissionName")
+                            AppLogger.d( "Remote Shizuku server has permission: $permissionName")
                             return true
                         }
                         PackageManager.PERMISSION_DENIED -> {
-                            AppLogger.w(TAG, "Remote Shizuku server does NOT have permission: $permissionName")
+                            AppLogger.w( "Remote Shizuku server does NOT have permission: $permissionName")
                             return false
                         }
-                        else -> AppLogger.v(TAG, "Unexpected result from checkRemotePermission: $result for permission: $permissionName")
+                        else -> AppLogger.v( "Unexpected result from checkRemotePermission: $result for permission: $permissionName")
                     }
                     return false
                 } else {
-                    AppLogger.v(TAG, "Cannot check remote Shizuku server available permission. Server is not available.")
+                    AppLogger.v( "Cannot check remote Shizuku server available permission. Server is not available.")
                     return false
                 }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Error while checking remote Shizuku server permission", e)
+                AppLogger.e( "Error while checking remote Shizuku server permission", e)
                 false
             }
         }
@@ -154,7 +153,7 @@ class ShizukuConnectionManager(
         fun startServer(context: Context, authKey: String) {
             try {
                 if (isAvailable()) {
-                    AppLogger.i(TAG, "Shizuku server is already running, no need to send start broadcast")
+                    AppLogger.i( "Shizuku server is already running, no need to send start broadcast")
                     return
                 }
                 val packageName = getPackageName(context) ?: throw IllegalStateException("Shizuku manager package not found, cannot start server")
@@ -168,9 +167,9 @@ class ShizukuConnectionManager(
                     addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
                 }
                 context.sendBroadcast(intent)
-                AppLogger.i(TAG, "Sent broadcast to start Shizuku server to $packageName")
+                AppLogger.i( "Sent broadcast to start Shizuku server to $packageName")
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to send broadcast to start Shizuku server", e)
+                AppLogger.e( "Failed to send broadcast to start Shizuku server", e)
             }
         }
 
@@ -184,7 +183,7 @@ class ShizukuConnectionManager(
         fun stopServer(context: Context, authKey: String) {
             try {
                 if (!isAvailable()) {
-                    AppLogger.i(TAG, "Shizuku server is already stopped, no need to send stop broadcast")
+                    AppLogger.i( "Shizuku server is already stopped, no need to send stop broadcast")
                     return
                 }
                 val packageName = getPackageName(context) ?: throw IllegalStateException("Shizuku manager package not found, cannot stop server")
@@ -198,47 +197,10 @@ class ShizukuConnectionManager(
                     addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
                 }
                 context.sendBroadcast(intent)
-                AppLogger.i(TAG, "Sent broadcast to stop Shizuku server to $packageName")
+                AppLogger.i( "Sent broadcast to stop Shizuku server to $packageName")
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to send broadcast to stop Shizuku server", e)
+                AppLogger.e( "Failed to send broadcast to stop Shizuku server", e)
             }
-        }
-
-        /**
-         * Grants an app op permission to this app package via the Shizuku server.
-         *
-         * @param context The application context.
-         * @param permissionName The name of the permission to grant, e.g. "MANAGE_ONGOING_CALLS" or [android.Manifest.permission.MANAGE_ONGOING_CALLS].
-         * @return True if the command was ran and return exit code 0, false if it failed, or if server is not available.
-         */
-        suspend fun grantAppOp(context: Context, permissionName: String): Boolean {
-            // Handle manifest "permission.MANAGE_ONGOING_CALLS" style
-            val parsedPermissionName = permissionName.substringAfterLast('.')
-            val shizukuConnectionManager = ShizukuConnectionManager(context)
-            try {
-                if (!isAvailable()) {
-                    AppLogger.w(TAG, "Cannot grant AppOps $parsedPermissionName, Shizuku server is not available")
-                    return false
-                }
-                val shellService = shizukuConnectionManager.getShellService()
-                val result = shellService.grantAppOps(context.packageName, parsedPermissionName, getCurrentUserProfileId())
-                AppLogger.i(TAG, "Tried to grant AppOps $parsedPermissionName to ${context.packageName} via ShellService. ShellService returned result: $result")
-                return result
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to grant AppOps $parsedPermissionName via ShellService", e)
-                return false
-            } finally {
-                shizukuConnectionManager.unbind()
-            }
-        }
-
-        /**
-         * Helper function to get the current user profile ID, since some users may be user multiple profiles on their device.
-         */
-        private fun getCurrentUserProfileId(): Int {
-            // Process.myUserHandle() returns the UserHandle of the current profile space.
-            // Calling hashCode() on it returns the actual numerical integer ID (e.g., 0, 10, 95).
-            return android.os.Process.myUserHandle().hashCode()
         }
 
         /**
@@ -257,7 +219,7 @@ class ShizukuConnectionManager(
                 }
                 delay(pollIntervalMillis)
             }
-            AppLogger.w(TAG, "Timed out waiting for Shizuku server after ${timeoutMillis}ms")
+            AppLogger.w( "Timed out waiting for Shizuku server after ${timeoutMillis}ms")
             return false
         }
     }
@@ -314,13 +276,18 @@ class ShizukuConnectionManager(
             override fun onServiceConnected(name: ComponentName, binder: IBinder?) {
                 if (binder != null) {
                     val proxy = IShellService.Stub.asInterface(binder)
-                    AppLogger.i(TAG, "ShellService connected successfully")
+                    AppLogger.i( "ShellService connected successfully")
+
+                    val appPreferences = AppPreferences(context)
+                    proxy.setLogCallback(AppLogger.callback, !appPreferences.isDebugEnabled())
+                    AppLogger.d( "ShellService log callback set, redaction mode: ${!appPreferences.isDebugEnabled()}")
+
                     if (continuation.isActive) {
                         continuation.resume(proxy)
                     }
                 } else {
                     val e = IllegalStateException("Shizuku returned a binder that was null")
-                    AppLogger.e(TAG, "Service connected with null binder", e)
+                    AppLogger.e( "Service connected with null binder", e)
                     if (continuation.isActive) {
                         continuation.resumeWithException(e)
                     }
@@ -337,7 +304,7 @@ class ShizukuConnectionManager(
              * 3. User stop Shizuku inside the app, causing the Shizuku ADB server to close.
              */
             override fun onServiceDisconnected(name: ComponentName?) {
-                AppLogger.d(TAG, "ShellService disconnected prematurely")
+                AppLogger.d( "ShellService disconnected prematurely")
                 // Clean up our connection variables since the service is no longer available,
                 // this also unbinds the service if it is still bound, but since the service is already gone, it will just clean up our variables.
                 unbind()
@@ -358,13 +325,13 @@ class ShizukuConnectionManager(
          */
         fun bindServiceInternal() {
             try {
-                AppLogger.i(TAG, "Binding ShellService...")
+                AppLogger.i( "Binding ShellService...")
 
                 // Shizuku Server (libshizuku.so) will look for a previous binder with the same serviceArgs and reuse it if found,
                 // otherwise it will create a new one. This allows for faster subsequent bindings.
                 Shizuku.bindUserService(userServiceArgs, connection)
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to bind service", e)
+                AppLogger.e( "Failed to bind service", e)
                 if (continuation.isActive) {
                     continuation.resumeWithException(e)
                 }
@@ -378,10 +345,10 @@ class ShizukuConnectionManager(
                     // Unregister the listener immediately after receiving the result to avoid memory leaks and unnecessary callbacks.
                     Shizuku.removeRequestPermissionResultListener(this)
                     if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                        AppLogger.d(TAG, "Permission granted, proceeding to bind")
+                        AppLogger.d( "Permission granted, proceeding to bind")
                         bindServiceInternal()
                     } else {
-                        AppLogger.w(TAG, "Shizuku permission denied, cannot continue with binding")
+                        AppLogger.w( "Shizuku permission denied, cannot continue with binding")
                         if (continuation.isActive) {
                             continuation.resumeWithException(SecurityException("Shizuku permission denied by user"))
                         }
@@ -394,12 +361,12 @@ class ShizukuConnectionManager(
         if (hasPermission()) {
             bindServiceInternal()
         } else {
-            AppLogger.w(TAG, "Cannot bind yet, missing permission, requesting Shizuku permission...")
+            AppLogger.w( "Cannot bind yet, missing permission, requesting Shizuku permission...")
             Shizuku.addRequestPermissionResultListener(permissionListener)
             Shizuku.requestPermission(PERMISSION_REQUEST_CODE)
         }
 
-        // Cleanup if the coroutine is cancelled before completion
+        // Cleanup when the coroutine is completed or canceled
         continuation.invokeOnCancellation {
             Shizuku.removeRequestPermissionResultListener(permissionListener)
         }
@@ -418,12 +385,12 @@ class ShizukuConnectionManager(
                     // Unbound service. This, by itself, does not trigger [IShellService.destroy()] since we have configured the daemon mode to false when binding.
                     // However, Shizuku Server will trigger [IShellService.destroy()] if the user manually stop Shizuku in the app.
                     Shizuku.unbindUserService(userServiceArgs, serviceConn, false)
-                    AppLogger.i(TAG, "ShellService was unbound")
+                    AppLogger.i( "ShellService was unbound")
                 } else {
-                    AppLogger.d(TAG, "ShellService binder is not available for a unbind. It has already been killed by the Shizuku Server. No issues here.")
+                    AppLogger.d( "ShellService binder is not available for a unbind. It has already been killed by the Shizuku Server. No issues here.")
                 }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Unexpected error occurred while trying to unbind ShellService", e)
+                AppLogger.e( "Unexpected error occurred while trying to unbind ShellService", e)
             }
         }
 

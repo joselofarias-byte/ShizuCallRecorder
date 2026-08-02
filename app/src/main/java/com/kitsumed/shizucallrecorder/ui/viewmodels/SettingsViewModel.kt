@@ -76,6 +76,8 @@ interface SettingsActions {
     fun setFileNameTemplate(template: String)
     fun setCallDetectionMode(mode: CallDetectionMode)
     fun setRecordThirdPartyCalls(enabled: Boolean)
+    fun setPostRecordingFileNotification(enabled: Boolean)
+    fun setOverlayEnabled(enabled: Boolean)
 }
 
 /**
@@ -116,18 +118,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     /**
      * Retrieves the formatted application version string, including CI run numbers.
      *
-     * @return Formatted string like "Version 1.0 (1) - CI Run #1234" or "Version 1.0 (1)"
+     * @return Formatted string like "Version 1.0 (1)"
      */
     override fun getAppVersion(): String {
         return try {
             val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
-            val base = "Version ${packageInfo.versionName} (${packageInfo.longVersionCode})"
-            val ciBuild = BuildConfig.CI_BUILD_NUMBER
-            if (ciBuild.lowercase() == "local") {
-                "$base - Local Build"
-            } else {
-                "$base - CI Run #$ciBuild"
-            }
+            "Version ${packageInfo.versionName} (${packageInfo.longVersionCode})"
         } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
             "Unknown Version"
         }
@@ -135,12 +131,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     /**
      * Triggers a recompose across the settings screen.
-     * 
+     *
      * **Important:** Jetpack Compose compiler is aggressive when optimizing and will skip
      * recomposition of components if it thinks inputs haven't changed (Dead Parameter Elimination).
-     * Since [preferences] reads are not backed by Compose `State`, you must wrap your reads in 
+     * Since [preferences] reads are not backed by Compose `State`, you must wrap your reads in
      * `remember(updateTrigger)` in your composables so the compiler knows they must be re-evaluated.
-     * 
+     *
      * Example:
      * ```kotlin
      * val updateTrigger by viewModel.updateTrigger.collectAsState()
@@ -418,6 +414,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      */
     override fun setRecordThirdPartyCalls(enabled: Boolean) {
         preferences.setRecordThirdPartyCallsEnabled(enabled)
+        refresh()
+    }
+
+    /**
+     * Enables or disables the post-recording file management notification, which shows actions like share, delete, etc.
+     */
+    override fun setPostRecordingFileNotification(enabled: Boolean) {
+        preferences.setPostRecordingFileActionsNotificationEnabled(enabled)
+        refresh()
+    }
+
+    /**
+     * Enables or disables the floating overlay that allows users to control recording while in a call.
+     */
+    override fun setOverlayEnabled(enabled: Boolean) {
+        preferences.setOverlayEnabled(enabled)
         refresh()
     }
 }

@@ -170,7 +170,7 @@ object RecordingFileNameFormatter {
             val appInfo = pm.getApplicationInfo(packageName, 0)
             pm.getApplicationLabel(appInfo).toString()
         } catch (e: PackageManager.NameNotFoundException) {
-            AppLogger.w(TAG, "Could not resolve app name for package '$packageName', got NameNotFoundException (privacy restriction?). Returning package name as fallback.")
+            AppLogger.w( "Could not resolve app name for package '$packageName', got NameNotFoundException (privacy restriction?). Returning package name as fallback.")
             // Fallback: return the package name itself
             packageName
         }

@@ -8,6 +8,13 @@
 
 package com.kitsumed.shizucallrecorder.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,9 +37,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +63,7 @@ import com.kitsumed.shizucallrecorder.AppUrls
 import com.kitsumed.shizucallrecorder.BuildConfig
 import com.kitsumed.shizucallrecorder.R
 import com.kitsumed.shizucallrecorder.ui.theme.ShizucallrecorderTheme
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 
 
@@ -70,24 +80,21 @@ fun DisclaimerScreen(onContinue: () -> Unit, modifier: Modifier = Modifier) {
     // [rememberSaveable] allow for the values to survive configuration
     // changes (like when recompose is triggered by a screen rotation)
     var hasAccepted by rememberSaveable { mutableStateOf(false) }
-    var hasScrolledToBottom by rememberSaveable { mutableStateOf(false) }
     var timeLeft by rememberSaveable { mutableIntStateOf(if (BuildConfig.DEBUG) 4 else 30) }
 
     val scrollState = rememberScrollState()
+    val hasScrolledToBottom by remember {
+        // Only trigger update (recompose) when boolean operation result change
+        derivedStateOf {
+            !scrollState.canScrollForward || scrollState.maxValue == 0
+        }
+    }
 
     // Countdown timer: decrements timeLeft once per second until it reaches 0.
     LaunchedEffect(Unit) {
         while (timeLeft > 0) {
             delay(1000L)
             timeLeft--
-        }
-    }
-
-    // Scroll detection: canScrollForward is false either when the user has reached the bottom
-    // OR when the content fits entirely on screen without scrolling.
-    LaunchedEffect(scrollState.canScrollForward) {
-        if (!scrollState.canScrollForward) {
-            hasScrolledToBottom = true
         }
     }
 
@@ -141,35 +148,45 @@ fun DisclaimerScreen(onContinue: () -> Unit, modifier: Modifier = Modifier) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            // Acknowledgement checkbox — only becomes interactive after the user scrolls down.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .toggleable(
-                        value = hasAccepted,
-                        onValueChange = { if (hasScrolledToBottom) hasAccepted = it },
-                        role = Role.Checkbox,
-                        enabled = hasScrolledToBottom
+            // Acknowledgement checkbox, only becomes interactive after the user scrolls down.
+            AnimatedContent(
+                targetState = hasScrolledToBottom,
+                transitionSpec = {
+                    val enterFade = fadeIn(tween(600))
+                    val exitFade = fadeOut(tween(500))
+
+                    enterFade togetherWith exitFade                },
+                label = "CheckboxUnlockTransition"
+            ) { unlocked ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = hasAccepted,
+                            onValueChange = { if (unlocked) hasAccepted = it },
+                            role = Role.Checkbox,
+                            enabled = unlocked
+                        )
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Checkbox(
+                        checked = hasAccepted,
+                        onCheckedChange = null, // Handled by the Row's toggleable modifier above.
+                        enabled = unlocked
                     )
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Checkbox(
-                    checked = hasAccepted,
-                    onCheckedChange = null, // Handled by the Row's toggleable modifier above.
-                    enabled = hasScrolledToBottom
-                )
-                Text(
-                    text = stringResource(R.string.disclaimer_checkbox_label),
-                    style = MaterialTheme.typography.bodyMedium,
-                    // Dim the label to signal it's not yet interactive.
-                    color = if (hasScrolledToBottom) MaterialTheme.colorScheme.onBackground
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
+                    Text(
+                        text = stringResource(R.string.disclaimer_checkbox_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        // Dim the label to signal it's not yet interactive.
+                        color = if (unlocked) MaterialTheme.colorScheme.onBackground
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                }
             }
 
-            // Continue button — enabled only when all three gates are satisfied.
+            // Continue button, enabled only when all three gates are satisfied.
             val canContinue = hasAccepted && hasScrolledToBottom && timeLeft == 0
 
             Button(
@@ -177,7 +194,6 @@ fun DisclaimerScreen(onContinue: () -> Unit, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
                 enabled = canContinue,
             ) {
-                // Show the remaining countdown seconds while the timer is still running.
                 if (timeLeft > 0) {
                     Text(text = stringResource(R.string.disclaimer_wait, timeLeft))
                 }

@@ -9,11 +9,14 @@
 package com.kitsumed.shizucallrecorder.ui.screens
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -23,6 +26,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -77,9 +81,11 @@ import com.kitsumed.shizucallrecorder.ui.viewmodels.SettingsActions
 import com.kitsumed.shizucallrecorder.ui.viewmodels.SettingsViewModel
 import com.mikepenz.aboutlibraries.ui.compose.android.produceLibraries
 import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
+import com.kitsumed.shizucallrecorder.system.permissions.PermissionChecks
 import kotlinx.coroutines.delay
 import org.xmlpull.v1.XmlPullParser
 import java.util.Locale
+import androidx.core.net.toUri
 
 /**
  * Stateful wrapper for the Settings screen that connects [SettingsViewModel] to [SettingsContent].
@@ -93,7 +99,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    
+
     // Trigger recomposition when settings change by viewmodel.refresh()
     val updateTrigger by viewModel.updateTrigger.collectAsState()
 
@@ -125,8 +131,8 @@ fun SettingsScreen(
         onSelectFolder = { folderPickerLauncher.launch(null) },
         onOpenContactsIncoming = { contactPickerViewModel.openContactPicker(ContactPickerType.INCOMING) },
         onOpenContactsOutgoing = { contactPickerViewModel.openContactPicker(ContactPickerType.OUTGOING) },
-        onConfirmContacts = { numbers ->
-            contactPickerViewModel.confirmContactPicker(numbers)
+        onConfirmContacts = { lookupIDs ->
+            contactPickerViewModel.confirmContactPicker(lookupIDs)
             // Refresh the screen so the new contact list information is shown immediately after confirming and closing the dialog.
             viewModel.refresh()
         },
@@ -209,7 +215,7 @@ fun SettingsContent(
                 ContactPickerType.OUTGOING -> stringResource(R.string.settings_select_contacts_outgoing)
             },
             contacts = picker.contacts,
-            initialSelection = picker.selectedNumbers,
+            initialSelection = picker.selectedContactsLookupId,
             onConfirm = onConfirmContacts,
             onDismiss = onDismissContacts
         )
@@ -322,7 +328,7 @@ private fun VisualSection(preferences: AppPreferences, updateTrigger: Int, actio
     val currentThemeMode = remember(updateTrigger) { preferences.getThemeMode() }
     val isDynamicColorEnabled = remember(updateTrigger) { preferences.isDynamicColorEnabled() }
     val isShowToastsEnabled = remember(updateTrigger) { preferences.isShowToastsEnabled() }
-    val isVibrationEnabled = remember(updateTrigger) { preferences.isVibrationEnabled() }
+    val isRecordingOverlayEnabled = remember(updateTrigger) { preferences.isOverlayEnabled() }
     val context = LocalContext.current
     val resources = LocalResources.current
 
@@ -378,8 +384,8 @@ private fun VisualSection(preferences: AppPreferences, updateTrigger: Int, actio
         val defaultThemeMode = AppPreferences.DefaultsValue.THEME_MODE.key
         M3DropdownField(
             label    = stringResource(R.string.settings_theme_mode),
-            selected = themeOptions.find { it.key == currentThemeMode.key } 
-                ?: themeOptions.find { it.key == defaultThemeMode } 
+            selected = themeOptions.find { it.key == currentThemeMode.key }
+                ?: themeOptions.find { it.key == defaultThemeMode }
                 ?: themeOptions.first(),
             options  = themeOptions,
             onOptionSelected = { actions.setThemeMode(AppPreferences.ThemeMode.fromKey(it.key)) },
@@ -396,9 +402,20 @@ private fun VisualSection(preferences: AppPreferences, updateTrigger: Int, actio
             onCheckedChange = { actions.setShowToastsEnabled(it) }
         )
         ToggleListItem(
-            label           = stringResource(R.string.settings_vibration_enabled),
-            checked         = isVibrationEnabled,
-            onCheckedChange = { actions.setVibrationEnabled(it) }
+            label = stringResource(R.string.settings_overlay_title),
+            description = stringResource(R.string.settings_overlay_subtitle),
+            checked = isRecordingOverlayEnabled,
+            onCheckedChange = { enabled ->
+                if (enabled && !PermissionChecks.hasOverlayPermission(context)) {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        "package:${context.packageName}".toUri()
+                    )
+                    context.startActivity(intent)
+                } else {
+                    actions.setOverlayEnabled(enabled)
+                }
+            }
         )
     }
 }
@@ -519,12 +536,14 @@ private fun RecordingSection(
     onOpenContactsOutgoing: () -> Unit
 ) {
     val context = LocalContext.current
-    
+
     // Evaluate these here so they are fetched on every recomposition.
     val recordingFolderLabel = remember(updateTrigger) { SafHelper.getFolderDisplayNameOrNull(context, preferences.getRecordingFolderUri()) }
     val callDetectionMode = remember(updateTrigger) { preferences.getCallDetectionMode() }
     val recordThirdPartyCalls = remember(updateTrigger) { preferences.isRecordThirdPartyCallsEnabled() }
     val fileNameFormat = remember(updateTrigger) { preferences.getFileNameTemplate() }
+    val postRecordingFileNotifications = remember(updateTrigger) { preferences.isPostRecordingFileActionsNotificationEnabled() }
+    val isVibrationEnabled = remember(updateTrigger) { preferences.isVibrationEnabled() }
     val autoRecordIncoming = remember(updateTrigger) { preferences.isAutoRecordIncomingEnabled() }
     val autoRecordOutgoing = remember(updateTrigger) { preferences.isAutoRecordOutgoingEnabled() }
     val ignoreAnonymousIncoming = remember(updateTrigger) { preferences.isIgnoreAnonymousIncomingEnabled() }
@@ -559,21 +578,34 @@ private fun RecordingSection(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
         )
 
-        // These settings are only working with InCallService detection mode.
-        if (callDetectionMode == CallDetectionMode.InCallService) {
-            ToggleListItem(
-                label           = stringResource(R.string.settings_record_third_party_calls),
-                description     = stringResource(R.string.settings_record_third_party_calls_description),
-                checked         = recordThirdPartyCalls,
-                onCheckedChange = { actions.setRecordThirdPartyCalls(it) }
-            )
-        } else { // Show a warning for PhoneState broadcast method
-             WarningCard(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                title = stringResource(R.string.settings_call_detection_method_warning_title),
-                message = stringResource(R.string.call_detection_mode_phonestate_limited_support))
-        }
+        AnimatedContent(
+            targetState = callDetectionMode,
+            transitionSpec = {
+                val enterTransition = fadeIn(tween(300)) + expandVertically(tween(300))
+                val exitTransition = fadeOut(tween(250)) + shrinkVertically(tween(250))
 
+                enterTransition togetherWith exitTransition
+            },
+            label = "CallDetectionModeSettingsTransition"
+        ) { targetMode ->
+            when (targetMode) {
+                CallDetectionMode.InCallService -> {
+                    ToggleListItem(
+                        label           = stringResource(R.string.settings_record_third_party_calls),
+                        description     = stringResource(R.string.settings_record_third_party_calls_description),
+                        checked         = recordThirdPartyCalls,
+                        onCheckedChange = { actions.setRecordThirdPartyCalls(it) }
+                    )
+                }
+                CallDetectionMode.PhoneState -> {
+                    WarningCard(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        title = stringResource(R.string.settings_call_detection_method_warning_title),
+                        message = stringResource(R.string.call_detection_mode_phonestate_limited_support)
+                    )
+                }
+            }
+        }
 
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), thickness = 0.5.dp)
 
@@ -611,6 +643,21 @@ private fun RecordingSection(
                 )
             },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
+
+        ToggleListItem(
+            label = stringResource(R.string.settings_post_recording_notification),
+            description = stringResource(R.string.settings_post_recording_notification_description),
+            checked = postRecordingFileNotifications,
+            onCheckedChange = { actions.setPostRecordingFileNotification(it) }
+        )
+
+        ToggleListItem(
+            label           = stringResource(R.string.settings_vibration_enabled),
+            checked         = isVibrationEnabled,
+            onCheckedChange = { actions.setVibrationEnabled(it) }
         )
 
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
@@ -729,7 +776,7 @@ private fun AudioSection(preferences: AppPreferences, updateTrigger: Int, action
     val audioSource = remember(updateTrigger) { preferences.getAudioSource() }
     val audioCodec = remember(updateTrigger) { preferences.getAudioCodec() }
     val savedBitRate = remember(updateTrigger) { preferences.getAudioBitRate() }
-        
+
     SettingsSection(title = stringResource(R.string.settings_section_audio)) {
         val currentSdk = Build.VERSION.SDK_INT
 
@@ -761,10 +808,10 @@ private fun AudioSection(preferences: AppPreferences, updateTrigger: Int, action
 
         val codecOptions = ScrcpyAudioCodec.entries
             .map { OptionItem(it.cliKey, stringResource(it.titleResId)) }
-        
+
         M3DropdownField(
             label    = stringResource(R.string.settings_audio_codec),
-            selected = codecOptions.find { it.key == audioCodec } 
+            selected = codecOptions.find { it.key == audioCodec }
                 ?: codecOptions.first(),
             options  = codecOptions,
             onOptionSelected = { actions.setAudioCodec(it.key) },
@@ -786,7 +833,7 @@ private fun AudioSection(preferences: AppPreferences, updateTrigger: Int, action
 
         M3DropdownField(
             label    = stringResource(R.string.settings_audio_bitrate),
-            selected = bitrateOptions.find { it.key == savedBitRate.toString() } 
+            selected = bitrateOptions.find { it.key == savedBitRate.toString() }
                 ?: bitrateOptions.first(), // fallback gracefully if bitrate was removed from expected options
             options  = bitrateOptions,
             onOptionSelected = { actions.setAudioBitRate(it.key.toInt()) },
@@ -1174,6 +1221,8 @@ private fun SettingsScreenPreview() {
             override fun setFileNameTemplate(template: String) {}
             override fun setCallDetectionMode(mode: CallDetectionMode) {}
             override fun setRecordThirdPartyCalls(enabled: Boolean) {}
+            override fun setPostRecordingFileNotification(enabled: Boolean) {}
+            override fun setOverlayEnabled(enabled: Boolean) {}
         }
 
         // File name template selection dialog

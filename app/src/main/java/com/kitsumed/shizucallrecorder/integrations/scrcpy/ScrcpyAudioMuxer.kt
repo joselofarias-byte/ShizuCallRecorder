@@ -44,7 +44,7 @@ class ScrcpyAudioMuxer(
 ) : Closeable {
 
     companion object {
-        private const val TAG = "SCR:ScrcpyAudioMuxer"
+        private const val TAG = "ScrcpyAudioMuxer"
     }
 
     // Muxer state
@@ -108,86 +108,52 @@ class ScrcpyAudioMuxer(
      *              determines the output container format (OGG for Opus, MPEG-4 for AAC, etc.).
      */
     fun initialize(codec: ScrcpyAudioCodec) {
-        if (muxer != null) return // Already initialised; ignore duplicate calls.
+        if (muxer != null) return
 
-        AppLogger.d(TAG, "Initialising muxer: codec=${codec.cliKey} format=${codec.outputFormat} path='$outputDisplayPath'")
+        AppLogger.d("Initialising muxer: codec=${codec.cliKey} format=${codec.outputFormat} path='$outputDisplayPath'")
         muxer = MediaMuxer(outputFileDescriptor, codec.outputFormat)
     }
 
-    /**
-     * Processes a single audio packet received from [ScrcpyClient].
-     *
-     * Config packets (CSD) are used to set up the muxer track; regular frames are written
-     * as audio samples with a wall-clock–derived PTS.  Packets arriving before the muxer
-     * track is ready are silently dropped (this should not happen in normal operation because
-     * scrcpy always sends the config packet first).
-     *
-     * @param packet  The decoded packet from [ScrcpyClient.AudioPacketListener.onAudioPacket].
-     * @param codec   The active [ScrcpyAudioCodec], used to determine the MIME type for the track.
-     */
     fun writePacket(packet: ScrcpyClient.AudioPacket, codec: ScrcpyAudioCodec) {
         if (packet.isConfigPacket) {
-            // Config packet: set up the audio track if we haven't yet.
             if (audioTrackIndex < 0) {
                 addAudioTrack(configData = packet.data, codec = codec)
             }
-            // Config packets carry no audio data; do not write them as samples.
             return
         }
 
-        // Guard: only write if the muxer is fully started and we have a valid track.
         if (!isMuxerStarted || audioTrackIndex < 0) {
-            AppLogger.w(TAG, "writePacket(): muxer not ready – dropping frame")
+            AppLogger.w("writePacket(): muxer not ready – dropping frame")
             return
         }
 
         val nowNanos = System.nanoTime()
 
-        // Missing/Large Gap detection: if the gap between this packet and the last one is huge,
-        // it means we paused the recording or dropped a massive amount of packets. We subtract this
-        // dead time from our internal timeline so the final output file doesn't have a huge silence.
-        // TODO: This code was added to fix most phone audio player behaving badly with the large silence, ideally we would like to keep the silence and not corrupt the file by doing so.
         if (firstPacketTimeNanos == -1L) {
             firstPacketTimeNanos = nowNanos
             lastPacketWallClockNanos = nowNanos
-            AppLogger.d(TAG, "First audio frame: wall-clock origin set, pts=0")
+            AppLogger.d("First audio frame: wall-clock origin set, pts=0")
         } else {
-            // This is the "temporary" fix for the pause feature (audio silence) we just fully cut it out to prevent corrupting the file.
             val gapNanos = nowNanos - lastPacketWallClockNanos
             if (gapNanos > GAP_THRESHOLD_NANOS) {
                 AppLogger.d(TAG, "Gap detected but preserved. Gap was ${gapNanos / 1_000_000} ms.")
-                // For call recordings, we MUST preserve silence gaps to maintain the correct overall duration.
-                // We no longer add to totalIgnoredGapNanos here.
             }
             lastPacketWallClockNanos = nowNanos
         }
 
-        // Wall-clock PTS: derive from System.nanoTime so real silences produce real gaps.
         val wallClockPtsUs = (nowNanos - firstPacketTimeNanos - totalIgnoredGapNanos) / 1000L
-
-        // Safety check: MediaMuxer requires strictly increasing PTS values.
-        // System.nanoTime() is guaranteed monotonically non-decreasing, but integer
-        // truncation to microseconds can produce equal values for back-to-back packets.
         val normalizedPtsUs = if (wallClockPtsUs > lastWrittenPtsUs) wallClockPtsUs else lastWrittenPtsUs + 1L
 
         val bufferInfo = MediaCodec.BufferInfo().apply {
-            offset             = 0
-            size               = packet.data.size
+            offset = 0
+            size = packet.data.size
             presentationTimeUs = normalizedPtsUs
         }
         lastWrittenPtsUs = normalizedPtsUs
 
-        // ByteBuffer.wrap() creates a view over the existing array with no copy.
         muxer?.writeSampleData(audioTrackIndex, ByteBuffer.wrap(packet.data), bufferInfo)
     }
 
-    /**
-     * Finalises the output file and releases the muxer.
-     *
-     * IMPORTANT: [MediaMuxer.stop] writes the container index (moov/EBML).  Without this call
-     * the output file is structurally incomplete and some media players will refuse to open it.
-     * [close] must therefore be called even if only a single audio frame was written.
-     */
     override fun close() {
         if (isMuxerStarted) {
             val wallClockDurationMs = if (firstPacketTimeNanos != -1L) (System.nanoTime() - firstPacketTimeNanos) / 1_000_000 else 0
@@ -196,33 +162,24 @@ class ScrcpyAudioMuxer(
 
             AppLogger.d(TAG, "Finalising muxer for '$outputDisplayPath'")
             runCatching { muxer?.stop() }.onFailure { e ->
-                AppLogger.e(TAG, "Muxer stop failed (file may be incomplete): ${e.message}")
+                AppLogger.e("Muxer stop failed (file may be incomplete): ${e.message}")
             }
         }
         runCatching { muxer?.release() }
-        muxer                  = null
-        isMuxerStarted         = false
-        audioTrackIndex        = -1
-        firstPacketTimeNanos   = -1L
-        lastWrittenPtsUs       = -1L
+        muxer = null
+        isMuxerStarted = false
+        audioTrackIndex = -1
+        firstPacketTimeNanos = -1L
+        lastWrittenPtsUs = -1L
         lastPacketWallClockNanos = -1L
-        totalIgnoredGapNanos     = 0L
-        AppLogger.d(TAG, "Muxer closed")
+        totalIgnoredGapNanos = 0L
+        AppLogger.d("Muxer closed")
     }
 
-    // Private helpers
-
-    /**
-     * Configures the muxer's audio track using the codec-specific data from the config packet,
-     * then calls [MediaMuxer.start] to begin accepting sample data.
-     *
-     * @param configData  Raw CSD bytes from the scrcpy config packet (may be empty for Opus).
-     * @param codec       The [ScrcpyAudioCodec] used to select the MIME type.
-     */
     private fun addAudioTrack(configData: ByteArray, codec: ScrcpyAudioCodec) {
         val csdBytes = configData.takeIf { it.isNotEmpty() }
         if (csdBytes == null) {
-            AppLogger.e(TAG, "Empty config data received. Cannot initialize audio track.")
+            AppLogger.e("Empty config data received. Cannot initialize audio track.")
             return
         }
 
@@ -230,18 +187,17 @@ class ScrcpyAudioMuxer(
             setString(MediaFormat.KEY_MIME, codec.mimeType)
             setInteger(MediaFormat.KEY_SAMPLE_RATE, ScrcpyConfig.AUDIO_SAMPLE_RATE)
             setInteger(MediaFormat.KEY_CHANNEL_COUNT, ScrcpyConfig.AUDIO_CHANNELS)
-            // "csd-0" is the standard key for codec-specific data buffer 0.
             setByteBuffer("csd-0", ByteBuffer.wrap(csdBytes))
         }
 
         audioTrackIndex = muxer?.addTrack(mediaFormat) ?: -1
         if (audioTrackIndex < 0) {
-            AppLogger.e(TAG, "Failed to add audio track (addTrack returned $audioTrackIndex)")
+            AppLogger.e("Failed to add audio track (addTrack returned $audioTrackIndex)")
             return
         }
 
         muxer?.start()
         isMuxerStarted = audioTrackIndex >= 0
-        AppLogger.d(TAG, "Audio track added (index=$audioTrackIndex mime=${codec.mimeType}) – muxer started")
+        AppLogger.d("Audio track added (index=$audioTrackIndex mime=${codec.mimeType}) – muxer started")
     }
 }

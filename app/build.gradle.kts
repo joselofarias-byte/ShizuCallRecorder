@@ -124,11 +124,6 @@ tasks.register("writeVersionForCi") {
     }
 }
 
-val ciBuildNumber = providers.gradleProperty("ciBuildNumber").getOrNull() ?: run {
-    logger.lifecycle("[INFO] 'ciBuildNumber' not defined. Defaulting to 'Local'")
-    "Local"
-}
-
 android {
     namespace = "com.kitsumed.shizucallrecorder"
     compileSdk = 36
@@ -138,14 +133,11 @@ android {
         minSdk = 30
         targetSdk = 36
         // Keep theses two values hard-coded here and update them per version. (To keep F-Droid compatibility since their parser is very basic)
-        versionCode = 13
-        versionName = "1.1.0"
+        versionCode = 17
+        versionName = "1.3.1"
 
         // Keep only the locales shipped by the app/dependencies in the final APK.
-        // This trims unused translated resources from AndroidX/Compose/Media3 dependencies.
         resourceConfigurations += listOf("en", "es")
-
-        buildConfigField("String", "CI_BUILD_NUMBER", "\"${ciBuildNumber}\"")
 
         buildConfigField("String", "SCRCPY_VERSION", "\"$scrcpyVersion\"")
         buildConfigField("String", "SCRCPY_SERVER_SHA256", "\"$scrcpyServerSha256\"")
@@ -198,7 +190,6 @@ android {
         // Exclude the original metadata from libphonenumber to avoid conflicts with our extracted version. This ensures only our processed assets are included in the final APK.
         resources.excludes.add("com/google/i18n/phonenumbers/data/**")
 
-        // Trim library packaging metadata that is not used at runtime.
         resources.excludes += setOf(
             "META-INF/*.version",
             "META-INF/DEPENDENCIES",
@@ -208,7 +199,6 @@ android {
             "META-INF/io.netty.versions.properties"
         )
 
-        // Compress native libraries in the APK to reduce the file sent through LocalSend.
         jniLibs {
             useLegacyPackaging = true
         }
@@ -293,11 +283,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
     // Media3 / Playback
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.ui)
-
 
     // AboutLibraries
     implementation(libs.aboutlibraries.core)
@@ -310,4 +300,3 @@ dependencies {
     implementation(libs.shizukuApi)
     implementation(libs.shizukuProvider)
 }
-
