@@ -19,40 +19,43 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Green80,
-    onPrimary = DeepDarkGreen, // Dark text on light-green buttons
-    primaryContainer = GreenContainerDark,
-    onPrimaryContainer = GreenContainerLight,
+    primary = Violet80,
+    onPrimary = DeepDarkViolet,
+    primaryContainer = VioletContainerDark,
+    onPrimaryContainer = VioletContainerLight,
 
-    secondary = GreenGrey80,
-    onSecondary = DarkGreyGreen,
+    secondary = VioletGrey80,
+    onSecondary = DarkGreyViolet,
 
-    tertiary = AccentGreen80,
-    onTertiary = AccentGreenDark,
+    tertiary = AccentViolet80,
+    onTertiary = AccentVioletDark,
 
     surface = DarkSurface,
     onSurface = OffWhiteText,
-    outline = GreyGreenOutline
+    outline = GreyVioletOutline
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Green40,
-    onPrimary = White, // White text on dark-green buttons
-    primaryContainer = GreenContainerLight,
-    onPrimaryContainer = VeryDarkForest,
+    primary = Violet40,
+    onPrimary = White,
+    primaryContainer = VioletContainerLight,
+    onPrimaryContainer = VeryDarkViolet,
 
-    secondary = GreenGrey40,
+    secondary = VioletGrey40,
     onSecondary = White,
+
+    tertiary = AccentVioletDark,
+    onTertiary = White,
 
     surface = LightSurface,
     onSurface = NearBlackText,
-    outline = GreyGreenOutline
+    outline = GreyVioletOutline
 )
 
 @Composable
 fun ShizucallrecorderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
+    // Dynamic color remains available as an explicit user option on Android 12+.
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
