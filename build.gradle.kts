@@ -13,3 +13,16 @@ plugins {
     alias(libs.plugins.kotlin.parcelize) apply false
     alias(libs.plugins.aboutlibraries) apply false
 }
+
+subprojects {
+    plugins.withId("com.android.application") {
+        project.afterEvaluate {
+            extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
+                defaultConfig {
+                    applicationId = "com.joselofarias.shizucallrecorder"
+                    versionNameSuffix = "-jf1"
+                }
+            }
+        }
+    }
+}
