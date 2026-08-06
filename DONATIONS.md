@@ -1,19 +1,23 @@
-# Apoyar el mantenimiento del fork
+# Apoyar el desarrollo
 
-ShizuCallRecorder seguirá siendo software libre y sin publicidad invasiva. Quien considere útil esta edición podrá apoyar voluntariamente el trabajo de mantenimiento realizado por **JoseloFarias**.
+ShizuCallRecorder seguirá siendo software libre y sin publicidad invasiva.
 
-## Métodos previstos
+## Proyecto original
 
-Los identificadores públicos todavía no están configurados. No envíes fondos hasta que este archivo publique datos verificados.
+Esta edición deriva de **ShizuCallRecorder**, creado y mantenido por **kitsumed (Med)** y sus colaboradores en `kitsumed/ShizuCallRecorder`.
 
-- EVM: dirección exclusiva para donaciones, con las redes compatibles indicadas expresamente.
-- Binance Pay: QR o Pay ID público; no se publicarán correo ni teléfono.
-- PayPal: enlace PayPal.Me verificado.
+Para agradecer, contribuir o brindar apoyo al autor original, deben utilizarse exclusivamente los enlaces y mecanismos publicados en su repositorio oficial, incluido GitHub Sponsors cuando esté disponible.
 
-## Condiciones
+## Edición JoseloFarias
 
-- Una donación no compra funciones, soporte prioritario, licencias ni garantías.
-- El código y sus licencias permanecen sin cambios.
-- Los créditos y mecanismos de apoyo del autor original se conservan y no se sustituyen.
-- Las direcciones y enlaces deberán verificarse antes de cada publicación.
-- Para EVM se utilizará una billetera separada de las finanzas personales y se advertirá sobre redes no compatibles.
+Quien considere útiles las modificaciones de esta edición podrá apoyar voluntariamente el mantenimiento realizado por **JoseloFarias**.
+
+Los identificadores públicos de apoyo todavía no están configurados. La aplicación no mostrará botones correspondientes hasta que todos los datos hayan sido verificados.
+
+## Transparencia
+
+- El apoyo a JoseloFarias corresponde únicamente al mantenimiento de esta edición derivada.
+- JoseloFarias no representa ni recauda apoyo en nombre de kitsumed ni de sus colaboradores.
+- El mecanismo de apoyo al proyecto original se conserva y debe mostrarse separado del apoyo al fork.
+- Una contribución voluntaria no compra funciones, soporte prioritario, licencias ni garantías.
+- El código y su licencia GPL permanecen sin cambios.
