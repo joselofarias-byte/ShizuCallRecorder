@@ -1,16 +1,29 @@
-# Fork identity
+# Identidad del fork
 
-This repository follows the shared identity used by the Android forks maintained by **joselofarias-byte**.
+ShizuCallRecorder forma parte de la familia de aplicaciones mantenidas bajo la marca **JoseloFarias**.
 
-## Visual standard
+## Identidad técnica
 
-- Primary identity: light violet.
-- Material 3 palette with accessible light and dark variants.
-- Error, warning and success colors keep their semantic meaning.
-- Dynamic color remains an optional user-controlled feature where supported.
+- Nombre visible: `ShizuCallRecorder`
+- Marca del mantenedor: `JoseloFarias`
+- Paquete Android: `com.joselofarias.shizucallrecorder`
+- Versión del fork: sufijo `jf` en `versionName`
 
-## Credit standard
+## Identidad visual
 
-- Original authors and licenses remain intact.
-- The fork maintainer is credited as **joselofarias-byte**.
-- Fork-specific work is documented separately from upstream authorship.
+- Color primario común de la familia: violeta Material 3 `#6750A4`
+- Variante clara/oscura: `#D0BCFF`
+- Los colores de error, advertencia y éxito conservan su significado semántico.
+- El color dinámico permanece opcional cuando el dispositivo lo admite.
+- El nombre corto del launcher se conserva para no recargar la interfaz.
+
+## Autoría y licencias
+
+- Los autores, licencias y avisos del proyecto original se conservan intactos.
+- JoseloFarias se identifica únicamente como mantenedor del fork y autor de sus modificaciones.
+- Las modificaciones propias deben documentarse separadamente de la autoría upstream.
+- El apoyo al mantenimiento del fork no sustituye ni oculta los mecanismos de apoyo del autor original.
+
+## Distribución
+
+El cambio de paquete convierte esta edición en una instalación nueva. Será necesario volver a conceder permisos, seleccionar la carpeta de grabaciones y validar la integración con Shizuku antes de ofrecerla como sustitución de paquetes anteriores.
