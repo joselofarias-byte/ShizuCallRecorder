@@ -5,7 +5,7 @@ ShizuCallRecorder forma parte de la familia de aplicaciones mantenidas bajo la m
 ## Identidad técnica
 
 - Nombre visible: `ShizuCallRecorder`
-- Marca del mantenedor: `JoseloFarias`
+- Marca del mantenedor del fork: `JoseloFarias`
 - Paquete Android: `com.joselofarias.shizucallrecorder`
 - Versión del fork: sufijo `jf` en `versionName`
 
@@ -17,12 +17,20 @@ ShizuCallRecorder forma parte de la familia de aplicaciones mantenidas bajo la m
 - El color dinámico permanece opcional cuando el dispositivo lo admite.
 - El nombre corto del launcher se conserva para no recargar la interfaz.
 
-## Autoría y licencias
+## Autoría real y procedencia
 
-- Los autores, licencias y avisos del proyecto original se conservan intactos.
-- JoseloFarias se identifica únicamente como mantenedor del fork y autor de sus modificaciones.
-- Las modificaciones propias deben documentarse separadamente de la autoría upstream.
-- El apoyo al mantenimiento del fork no sustituye ni oculta los mecanismos de apoyo del autor original.
+Esta edición no es el proyecto original.
+
+- **Proyecto original ShizuCallRecorder:** creado y mantenido por **kitsumed (Med)** y sus colaboradores en `kitsumed/ShizuCallRecorder`.
+- **Esta edición derivada:** mantenida por **JoseloFarias**, responsable únicamente de la integración, compatibilidad y demás cambios específicos del fork.
+
+Los avisos de copyright, la licencia GPL y los créditos del proyecto original deben permanecer intactos. Las modificaciones del fork se documentan separadamente y nunca se atribuyen al autor upstream.
+
+## Agradecimiento y apoyo
+
+Quien desee agradecer, colaborar o apoyar económicamente a **kitsumed (Med)** debe hacerlo mediante los enlaces y mecanismos oficiales publicados en el proyecto original, incluido su canal de GitHub Sponsors cuando esté disponible.
+
+Los métodos publicados por JoseloFarias apoyan solamente el mantenimiento de esta edición derivada. No representan, recaudan ni distribuyen fondos en nombre de kitsumed ni de sus colaboradores.
 
 ## Distribución
 
