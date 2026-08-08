@@ -1,0 +1,27 @@
+name: Port TalkBack upstream
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  port:
+    if: github.event.head_commit.message == 'chore: run TalkBack upstream port'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Cherry-pick upstream accessibility commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/kitsumed/ShizuCallRecorder.git
+          git fetch --no-tags upstream 641490f3f9d37e79a23549986fad01260216c8d4
+          git cherry-pick 641490f3f9d37e79a23549986fad01260216c8d4
+          git push origin HEAD:main
