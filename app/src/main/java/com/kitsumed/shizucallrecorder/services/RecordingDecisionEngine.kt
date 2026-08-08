@@ -215,6 +215,9 @@ class RecordingDecisionEngine private constructor(context: Context) {
         mode: AppPreferences.IgnoreContactsMode,
         ignoredContactsLookupId: Set<String>
     ): Boolean {
+
+        // Fix error when phone number is blank: https://github.com/kitsumed/ShizuCallRecorder/issues/95
+        // For example, this could happen with third-party app that define text in the phone numbers field, these get stripped out by us
         if (normalisedNumber.isBlank()) {
             AppLogger.i( "Cannot determine if contact should be ignored: phone number is blank, returning false")
             return false
@@ -245,6 +248,7 @@ class RecordingDecisionEngine private constructor(context: Context) {
                 }
 
                 AppPreferences.IgnoreContactsMode.SELECTED -> {
+                    // If no contacts are selected, we can skip the query and return false directly
                     if (!PermissionChecks.hasContactsPermission(appContext) || ignoredContactsLookupId.isEmpty()) {
                         return false
                     }
@@ -313,7 +317,9 @@ class RecordingDecisionEngine private constructor(context: Context) {
         // 31536000000 milliseconds = 1 year
         if (currentTime - lastNotificationTime > 31536000000L) {
             AppLogger.i( "Time threshold exceeded. Displaying project support notification.")
+            // Invoke your notification helper to push a standard background alert
             SponsorNotificationHelper.showSupportReminderNotification(appContext)
+            // Set the preference to the current timestamp to restart the countdown timer
             appPreferences.setLastForcedReminderSupportProjectTimeNotification(currentTime)
         }
     }
