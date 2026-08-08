@@ -40,4 +40,5 @@
   v(...);
   d(...);
   i(...);
+  java.lang.String getCallerTag(); # Needed because this is used as a parameter to stripped logger methods
 }
