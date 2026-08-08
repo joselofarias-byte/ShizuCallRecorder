@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -138,6 +139,7 @@ fun PermissionsScreen(
                 val dialogMessage = stringResource(R.string.general_system_limitation_message, cleanPermissionsString)
 
                 AlertDialog(
+                    modifier = Modifier.semantics(mergeDescendants = true) {},
                     onDismissRequest = { exitProcess(0) },
                     title = { Text(text = stringResource(R.string.general_system_limitation)) },
                     text = { Text(text = dialogMessage) },
@@ -167,7 +169,7 @@ fun PermissionsScreen(
                     Text(text = stringResource(R.string.general_close))
                 }
             },
-            icon = { Icon(Icons.Default.ErrorOutline, contentDescription = null) }
+            icon = { Icon(Icons.Default.ErrorOutline, contentDescription = stringResource(R.string.general_system_limitation)) }
         )
     }
 
