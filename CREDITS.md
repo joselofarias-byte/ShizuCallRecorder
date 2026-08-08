@@ -1,17 +1,18 @@
-# Credits
+# Créditos
 
-## Original project
+## Proyecto original
 
-ShizuCallRecorder was created and is maintained upstream by **kitsumed (Med)** and its contributors.
+ShizuCallRecorder fue creado y es mantenido upstream por **kitsumed (Med)** y sus colaboradores.
 
-- Upstream repository: `kitsumed/ShizuCallRecorder`
-- License and original copyright notices remain unchanged.
+- Repositorio original: `kitsumed/ShizuCallRecorder`
+- La licencia, el copyright y los avisos originales permanecen sin cambios.
+- Para agradecer, contribuir o apoyar a kitsumed, deben utilizarse los mecanismos publicados en el repositorio original, incluido GitHub Sponsors cuando esté disponible.
 
-## This fork
+## Esta edición
 
-This fork is maintained by **joselofarias-byte**.
+Esta edición derivada es mantenida por **JoseloFarias**.
 
-- Fork repository: `joselofarias-byte/ShizuCallRecorder`
-- Integration, compatibility work, recording library, playback, sharing, CI maintenance and fork-specific visual identity are maintained in this fork.
+- Repositorio del fork: `joselofarias-byte/ShizuCallRecorder`
+- La integración, compatibilidad, biblioteca de grabaciones, reproducción, compartición, mantenimiento de CI e identidad específica del fork se documentan como trabajo de esta edición.
 
-The fork keeps the original authorship and licensing while clearly identifying the person responsible for this derivative version.
+JoseloFarias es responsable solamente de las modificaciones del fork. No representa al autor original ni recauda apoyo en su nombre. Los métodos de apoyo de ambas partes deben mostrarse separados y claramente identificados.
