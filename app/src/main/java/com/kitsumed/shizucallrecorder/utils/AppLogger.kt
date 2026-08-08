@@ -134,23 +134,29 @@ object AppLogger {
         val stackTrace = Throwable().stackTrace
         for (element in stackTrace) {
             val className = element.className
-            if (className == loggerClassName) continue
+            if (className == loggerClassName) continue // Skip AppLogger itself
+            // The first class in the stack from our app
             if (className.startsWith(BuildConfig.APPLICATION_ID)) {
                 return formatTag(formatClassName(className))
             }
         }
-        return "UnknownClassName"
+
+        return "UnknownClassName" // Fallback if no caller is found
     }
 
     /**
      * Formats the class name to a simple tag by stripping package names and anonymous class suffixes.
+     * For example, "com.example.MyClass$1" becomes "MyClass".
      */
     private fun formatClassName(className: String): String {
         var simpleName = className.substringAfterLast('.')
+
+        // Strip anonymous class suffixes (e.g., MyClass$1)
         val dollarIndex = simpleName.indexOf('$')
         if (dollarIndex > 0) {
             simpleName = simpleName.substring(0, dollarIndex)
         }
+
         return simpleName
     }
 
@@ -287,6 +293,7 @@ object AppLogger {
                 prefs.getCallDetectionMode().requiredPermissions.forEach { permission ->
                     val grantedState = if (permission.isGranted(context)) "Granted" else "MISSING"
 
+                    // Determine the type of permission and specific name based on the sealed class subclass
                     val (type, name) = when (permission) {
                         is AppPermission.Runtime -> "Runtime" to permission.manifestString
                         is AppPermission.Elevated.AppOp -> "AppOp" to permission.permissionIdentifier
@@ -312,38 +319,47 @@ object AppLogger {
         }
     }
 
+    /** Logs a Verbose level message and optionally its throwable trace. */
     fun v(tag: String, message: String, t: Throwable? = null) {
         logInternal("V", tag, message, t)
     }
 
     fun v(message: String, t: Throwable? = null) { v(getCallerTag(), message, t) }
 
+    /** Logs a Debug level message and optionally its throwable trace. */
     fun d(tag: String, message: String, t: Throwable? = null) {
         logInternal("D", tag, message, t)
     }
 
     fun d(message: String, t: Throwable? = null) { d(getCallerTag(), message, t) }
 
+    /** Logs an Info level message and optionally its throwable trace. */
     fun i(tag: String, message: String, t: Throwable? = null) {
         logInternal("I", tag, message, t)
     }
 
     fun i(message: String, t: Throwable? = null) { i(getCallerTag(), message, t) }
 
+    /** Logs a Warning level message and optionally its throwable trace. */
     fun w(tag: String, message: String, t: Throwable? = null) {
         logInternal("W", tag, message, t)
     }
 
     fun w(message: String, t: Throwable? = null) { w(getCallerTag(), message, t) }
 
+    /** Logs an Error level message and optionally its throwable trace. */
     fun e(tag: String, message: String, t: Throwable? = null) {
         logInternal("E", tag, message, t)
     }
 
+    /** Logs a "What a Terrible Failure" (assert) message and optionally its throwable trace. */
     fun wtf(tag: String, message: String, t: Throwable? = null) {
         logInternal("WTF", tag, message, t)
     }
 
+    /**
+     * Internal helper to dispatch logs to Logcat with consistent redaction.
+     */
     private fun logToLogcat(level: String, tag: String, message: String) {
         when (level) {
             "V" -> Log.v(tag, message)
@@ -356,20 +372,29 @@ object AppLogger {
     }
     fun e(message: String, t: Throwable? = null) { e(getCallerTag(), message, t) }
 
+    /**
+     * Prepares a log message by enriching it with more detailed metadata (timestamp, log level, tag) and then
+     * forwarding it to the channel.
+     *
+     * This method centralizes redaction (message + stack trace) before any output occurs.
+     */
     private fun logInternal(level: String, tag: String, message: String, t: Throwable?) {
         val redactedMessage = if (isRedactionEnabled) redact(message) else message
         val stackTrace = t?.let { Log.getStackTraceString(it) }
         val redactedStackTrace = if (isRedactionEnabled && stackTrace != null) redact(stackTrace) else stackTrace
 
+        // Log to Logcat (redacted). We pass null as Throwable to avoid Logcat printing the unredacted trace automatically.
         val logcatMessage = redactedMessage + (redactedStackTrace?.let { "\n$it" } ?: "")
         logToLogcat(level, tag, logcatMessage)
 
+        // Handle remote process execution securely
         if (isRemoteProcess) {
             if (remoteCallback == null) {
                 Log.w(TAG, "IPC Drop: Log event triggered in remote process, but initAsRemote() was never called.")
                 return
             }
             try {
+                // Forward redacted message and redacted stack trace separately to preserve the contract
                 remoteCallback?.onLogEvent(level, tag, redactedMessage, redactedStackTrace)
             } catch (e: Exception) {
                 val errorMsg = "Failed to send log event via IPC callback. Original redacted message was: $redactedMessage"
@@ -377,6 +402,7 @@ object AppLogger {
                 val redactedErrorTrace = if (isRedactionEnabled) redact(errorTrace) else errorTrace
                 Log.v(TAG, "$errorMsg\n$redactedErrorTrace")
             }
+            // In remote mode, we rely entirely on the main process to handle log persistence. We do not write anything locally.
             return
         }
 
@@ -387,11 +413,20 @@ object AppLogger {
         channel.trySend(formattedLine)
     }
 
+    /**
+     * Redacts highly sensitive personal information (e.g. phone numbers) from the given text
+     * before it gets committed to physical storage.
+     */
     private fun redact(msg: String): String {
         val phoneRedactionRegex = Regex("(?<!\\d)(?:\\+?(?:\\d[-.\\s]?){8,14}\\d)(?!\\d)")
         return msg.replace(phoneRedactionRegex, "[PHONE_REDACTED]")
     }
 
+    /**
+     * Synchronously drains the logging channel and forcefully writes all pending messages to disk.
+     * This ensures that crucial crash traces and late logs are not lost if the process is
+     * abruptly killed before the asynchronous IO worker can process them.
+     */
     private fun flushSync() {
         val file = logFile ?: return
         try {
@@ -405,6 +440,7 @@ object AppLogger {
                 writer.flush()
             }
         } catch (_: Exception) {
+            // We're already crashing, ignore I/O errors here so we don't block the actual crash from propagating.
         }
     }
 }
