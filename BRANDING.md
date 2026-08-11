@@ -16,7 +16,9 @@ El nombre `ShizuCallRecorder` y el paquete original `com.kitsumed.shizucallrecor
 
 ## Créditos y licencia
 
-Este fork deriva de **kitsumed/ShizuCallRecorder** y conserva sus atribuciones, avisos de copyright, términos adicionales y licencia aplicable. La marca JoseloFarias identifica únicamente las modificaciones y builds del fork. Los usuarios deben ser dirigidos al proyecto original para reconocer o apoyar a sus autores cuando corresponda.
+Autor original: **kitsumed**. Este fork conserva sus atribuciones, avisos de copyright, términos adicionales y licencia aplicable. La marca **JoseloFarias** identifica únicamente las modificaciones y builds del fork.
+
+No se agregan enlaces promocionales a repositorios externos como parte de la identidad del fork; la atribución se realiza mencionando autores y conservando los avisos exigidos por licencia.
 
 ## Regla visual
 
