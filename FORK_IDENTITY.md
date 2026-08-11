@@ -1,6 +1,6 @@
 # Fork identity
 
-This repository follows the shared identity used by the Android forks maintained by **joselofarias-byte**.
+This repository follows the shared identity used by the Android forks maintained by **JoseloFarias**.
 
 ## Visual standard
 
@@ -11,6 +11,8 @@ This repository follows the shared identity used by the Android forks maintained
 
 ## Credit standard
 
+- Original author: **kitsumed**.
 - Original authors and licenses remain intact.
-- The fork maintainer is credited as **joselofarias-byte**.
+- The fork maintainer is credited as **JoseloFarias**.
 - Fork-specific work is documented separately from upstream authorship.
+- Attribution mentions original authors by name or alias without adding repository links as part of the fork branding.
