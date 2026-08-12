@@ -231,6 +231,13 @@ class RecordingNotificationHelper(private val context: Context) {
      */
     fun showPostCallNotification(fileUri: Uri, callMetadata: EnrichedCallData) {
         val manager = context.getSystemService(NotificationManager::class.java)
+        val number = callMetadata.getBestNumber()
+        val callerText = when {
+            callMetadata.callerName != null && number.isNotEmpty() -> "${callMetadata.callerName} ($number)"
+            callMetadata.callerName != null -> callMetadata.callerName
+            number.isNotEmpty() -> number
+            else -> context.getString(R.string.post_recording_notification_unknown_caller)
+        }
 
         // Resolve the target first and pin it to the Intent before wrapping it in a PendingIntent.
         // This prevents another application from intercepting or replacing the PendingIntent target.
@@ -276,7 +283,7 @@ class RecordingNotificationHelper(private val context: Context) {
             .setSmallIcon(R.drawable.ic_audio_file)
             .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher))
             .setContentTitle(context.getString(R.string.post_recording_notification_title))
-            .setContentText(callMetadata.getBestNumber().takeIf { it.isNotEmpty() } ?: context.getString(R.string.post_recording_notification_unknown_caller))
+            .setContentText(callerText)
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
 
