@@ -53,6 +53,12 @@ object AppLogger {
     private const val TAG = "${TAG_PREFIX}AppLogger"
 
     /**
+     * Package prefix of the Kotlin/Java sources. This intentionally follows the Android namespace,
+     * not BuildConfig.APPLICATION_ID, because branded builds use a different install package.
+     */
+    private const val CODE_PACKAGE_PREFIX = "com.kitsumed.shizucallrecorder"
+
+    /**
      * Reference to a remote callback. When set, this process acts as a producer
      * and forwards all logs to the remote process instead of writing locally.
      */
@@ -135,8 +141,8 @@ object AppLogger {
         for (element in stackTrace) {
             val className = element.className
             if (className == loggerClassName) continue // Skip AppLogger itself
-            // The first class in the stack from our app
-            if (className.startsWith(BuildConfig.APPLICATION_ID)) {
+            // The first class in the stack from our source namespace. The branded applicationId differs.
+            if (className.startsWith(CODE_PACKAGE_PREFIX)) {
                 return formatTag(formatClassName(className))
             }
         }
