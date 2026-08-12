@@ -10,7 +10,7 @@ package com.kitsumed.shizucallrecorder.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Light-violet identity shared by the Android forks maintained by joselofarias-byte.
+// Canonical violet identity shared by the Android forks maintained as JoseloFarias editions.
 val Violet80 = Color(0xFFD0BCFF)
 val Violet40 = Color(0xFF6750A4)
 
