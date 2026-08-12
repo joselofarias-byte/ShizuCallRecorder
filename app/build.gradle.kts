@@ -133,8 +133,8 @@ android {
         minSdk = 30
         targetSdk = 36
         // Keep theses two values hard-coded here and update them per version. (To keep F-Droid compatibility since their parser is very basic)
-        versionCode = 17
-        versionName = "1.3.1"
+        versionCode = 19
+        versionName = "1.3.3"
 
         // Keep only the locales shipped by the app/dependencies in the final APK.
         resourceConfigurations += listOf("en", "es")
