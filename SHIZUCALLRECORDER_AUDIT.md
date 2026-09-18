@@ -301,6 +301,7 @@ Command:
 | `:app:assembleDebug` | **SUCCESS.** APK `app/build/outputs/apk/debug/app-debug.apk`, 71 MB, SHA-256 `6fcae6f6c76e8b80b4c7a8f6bcd92cb9905e99b8c6cae6c63c8ca08e2803cffc` |
 | `:app:testDebugUnitTest` | **SUCCESS.** 14 tests, 0 failures: `PhoneNumberManagerTest` (4), `RecordingFileNameFormatterTest` (4), `CallDirectionTest` (4), `ScrcpyEnumsTest` (2) |
 | `:app:lintDebug` | **SUCCESS after B7.** Final report: **0 errors, 144 warnings** (pre-existing: `InlinedApi` POST_NOTIFICATIONS, `OldTargetApi` noise vs SDK 36, deprecated Compose icons, `UseKtx`, etc.). First lint run on this branch failed with 5 `NonObservableLocale` errors; those were fixed. |
+| GitHub Actions on `ba8f082` (PR #12) | **SUCCESS.** `Assemble Debug APK` (4m24s), `Analyze Code (java-kotlin)` / CodeQL (4m38s), CodeQL check (pass). |
 | Instrumentation / device tests | **None in repo.** Cannot run on HONOR from this VM. |
 | Runtime recording | **Not executed.** No Android device/emulator with telephony. |
 
