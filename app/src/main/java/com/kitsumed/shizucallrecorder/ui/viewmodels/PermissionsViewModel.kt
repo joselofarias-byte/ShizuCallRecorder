@@ -100,12 +100,23 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
             else                             -> { /* All steps completed, all global permission granted.*/ }
         }
 
+        if (status.isComplete()) {
+            onPermissionGranted()
+            return
+        }
+
         // Get a list of all required permissions for the current call detection mode that are not yet granted.
         val missingPermissions = status.callDetectionMode.requiredPermissions.filterNot { currentPermission ->
             status.callDetectionModeGrantedPermissions.contains(currentPermission)
         }
 
-        when (val nextToRequest = missingPermissions.first()) {
+        val nextToRequest = missingPermissions.firstOrNull()
+        if (nextToRequest == null) {
+            onPermissionGranted()
+            return
+        }
+
+        when (nextToRequest) {
             is AppPermission.Runtime -> {
                 requestRuntimePermission(nextToRequest.manifestString)
             }

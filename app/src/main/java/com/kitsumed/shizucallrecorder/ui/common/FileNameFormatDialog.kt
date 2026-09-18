@@ -65,7 +65,8 @@ fun FileNameFormatDialog(
     var text by remember { mutableStateOf(initialFormat) }
     val context = LocalContext.current
 
-    val previewState = remember(text) {
+    val prependOwnershipPrefix = AppPreferences(context).isFileNameOwnershipPrefixEnabled()
+    val previewState = remember(text, prependOwnershipPrefix) {
         val fakeMetadata = EnrichedCallData(
             normalisedPhoneNumber = "+1234567890",
             direction = CallDirection.INCOMING,
@@ -73,10 +74,13 @@ fun FileNameFormatDialog(
             isCrossCountry = false,
             callerName = "John Doe"
         )
-        val result = RecordingFileNameFormatter.formatFileName(
-            context, fakeMetadata, ScrcpyAudioCodec.OPUS, customFormat = text
+        RecordingFileNameFormatter.formatFileName(
+            context,
+            fakeMetadata,
+            ScrcpyAudioCodec.OPUS,
+            customFormat = text,
+            prependOwnershipPrefix = prependOwnershipPrefix
         )
-        result
     }
 
     val placeholders = remember(activeMode) {

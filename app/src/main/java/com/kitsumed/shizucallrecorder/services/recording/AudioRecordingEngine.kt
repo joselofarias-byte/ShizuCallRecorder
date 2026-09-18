@@ -129,7 +129,12 @@ class AudioRecordingEngine {
 
         AppLogger.i( "Starting recording pipeline: source=${audioSourceEnum.cliKey} codec=${codecEnum.cliKey} bitrate=$bitRate")
 
-        val fileName = RecordingFileNameFormatter.formatFileName(context, metadata, codecEnum)
+        val fileName = RecordingFileNameFormatter.formatFileName(
+            context,
+            metadata,
+            codecEnum,
+            prependOwnershipPrefix = preferences.isFileNameOwnershipPrefixEnabled()
+        )
 
         val safResult = SafHelper.createAudioFile(context, folderUri, fileName, codecEnum.mimeType)
             ?: throw PipelineInitializationException(

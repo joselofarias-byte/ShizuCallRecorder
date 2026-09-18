@@ -32,6 +32,7 @@ class InCallService : InCallService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activeTrackedCall: Call? = null
     private var isPipelineExecuted = false
+    private var standbyStarted = false
 
     private val callCallback = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
@@ -112,9 +113,6 @@ class InCallService : InCallService() {
             return
         }
 
-        if (state != Call.STATE_ACTIVE || isPipelineExecuted) return
-        isPipelineExecuted = true
-
         val details = call.details
         val rawNumber = details.handle?.schemeSpecificPart ?: ""
         val direction = when (details.callDirection) {
@@ -130,6 +128,19 @@ class InCallService : InCallService() {
             osProvidedCallerName = osCallerName,
             packageName = packageName
         )
+
+        // ponytail: pre-warm FGS/Shizuku on RINGING/DIALING without locking the ACTIVE start path.
+        if ((state == Call.STATE_RINGING || state == Call.STATE_DIALING) && !isPipelineExecuted) {
+            AppLogger.d("Primary call is ${callStateToString(state)}; entering standby to pre-warm recording.")
+            standbyStarted = true
+            serviceScope.launch {
+                RecordingDecisionEngine.getInstance(this@InCallService).enterStandby(rawCallData)
+            }
+            return
+        }
+
+        if (state != Call.STATE_ACTIVE || isPipelineExecuted) return
+        isPipelineExecuted = true
 
         AppLogger.i("Primary call became ACTIVE. Triggering Decision Engine Pipeline.")
         val isSelfManaged = details.hasProperty(Call.Details.PROPERTY_SELF_MANAGED)
@@ -149,10 +160,11 @@ class InCallService : InCallService() {
     private fun releasePrimaryTrackedCall() {
         val trackedCall = activeTrackedCall ?: return
         runCatching { trackedCall.unregisterCallback(callCallback) }
-        if (isPipelineExecuted) {
+        if (isPipelineExecuted || standbyStarted) {
             RecordingDecisionEngine.getInstance(this).endRecordingSession()
-            isPipelineExecuted = false
         }
+        isPipelineExecuted = false
+        standbyStarted = false
         activeTrackedCall = null
     }
 

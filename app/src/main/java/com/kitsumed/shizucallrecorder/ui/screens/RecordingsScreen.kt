@@ -108,6 +108,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -549,13 +550,14 @@ private fun RecordingRow(
 ) {
     val viewModel: RecordingsViewModel = viewModel()
     val context = LocalContext.current
+    val locale = LocalLocale.current.platformLocale
     val isIncoming = item.direction == "in"
     val accentColor = if (isIncoming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
     val directionIcon = if (isIncoming) Icons.Rounded.CallReceived else Icons.Rounded.CallMade
     val directionLabel = if (isIncoming) "Entrante" else "Saliente"
-    val timeStr = item.date?.let { SimpleDateFormat("hh:mm a", Locale.getDefault()).format(it) }.orEmpty()
+    val timeStr = item.date?.let { SimpleDateFormat("hh:mm a", locale).format(it) }.orEmpty()
     val displayName = item.contactName ?: item.phoneNumber
-    val lowerQuery = searchQuery.trim().lowercase(Locale.getDefault())
+    val lowerQuery = searchQuery.trim().lowercase(locale)
 
     var showMenu by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
@@ -621,7 +623,7 @@ private fun RecordingRow(
                         }
                     }
 
-                    if (lowerQuery.isNotBlank() && item.noteText.lowercase(Locale.getDefault()).contains(lowerQuery)) {
+                    if (lowerQuery.isNotBlank() && item.noteText.lowercase(locale).contains(lowerQuery)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -887,6 +889,7 @@ private fun SelectionBar(
 private fun RecordingInfoDialog(item: RecordingItem, onDismiss: () -> Unit) {
     val isIncoming = item.direction == "in"
     val accentColor = if (isIncoming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+    val locale = LocalLocale.current.platformLocale
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -913,11 +916,11 @@ private fun RecordingInfoDialog(item: RecordingItem, onDismiss: () -> Unit) {
                 InfoRow("Contacto", item.contactName ?: "—")
                 InfoRow("Número", item.phoneNumber)
                 InfoRow("Dirección", if (isIncoming) "Entrante" else "Saliente")
-                InfoRow("Fecha", item.date?.let { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(it) } ?: "—")
-                InfoRow("Hora", item.date?.let { SimpleDateFormat("hh:mm a", Locale.getDefault()).format(it) } ?: "—")
+                InfoRow("Fecha", item.date?.let { SimpleDateFormat("dd/MM/yyyy", locale).format(it) } ?: "—")
+                InfoRow("Hora", item.date?.let { SimpleDateFormat("hh:mm a", locale).format(it) } ?: "—")
                 InfoRow("Duración", if (item.durationMs > 0L) formatDurationMs(item.durationMs) else "—")
                 InfoRow("Tamaño", formatSize(item.sizeBytes))
-                InfoRow("Formato", item.extension.uppercase(Locale.getDefault()).ifBlank { "—" })
+                InfoRow("Formato", item.extension.uppercase(locale).ifBlank { "—" })
                 InfoRow("Favorita", if (item.isFavourite) "Sí" else "No")
                 if (item.noteText.isNotBlank()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)

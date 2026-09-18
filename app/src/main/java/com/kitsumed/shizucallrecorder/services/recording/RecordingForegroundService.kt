@@ -182,8 +182,12 @@ class RecordingForegroundService : Service() {
 
                 serviceScope.launch {
                     try {
-                        // Wait for Shizuku server to be available
-                        ShizukuConnectionManager.waitForServer()
+                        // Wait for Shizuku server to be available. waitForServer() returns false on
+                        // timeout; do not bind in that case or the error becomes "Shizuku is not running".
+                        val serverReady = ShizukuConnectionManager.waitForServer()
+                        if (!serverReady) {
+                            throw IllegalStateException("Timed out waiting for Shizuku server")
+                        }
                         val service = shizukuManager.getShellService()
                         shellService = service // update local ref
                         startNewRecordingSession(service, currentMeta)

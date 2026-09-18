@@ -99,13 +99,15 @@ object RecordingFileNameFormatter {
      * @param metadata Defines the main properties (direction, phone number, cross country).
      * @param codec The selected ScrcpyAudioCodec used to determine the file extension.
      * @param customFormat An optional custom format string to use instead of the one from preferences. Useful for testing or one-off formatting without changing user settings.
+     * @param prependOwnershipPrefix When true, prepend [OWNED_FILE_PREFIX]. Disable for OEM filename conventions.
      * @return A filesystem-safe filename string.
      */
     fun formatFileName(
         context: Context,
         metadata: EnrichedCallData,
         codec: ScrcpyAudioCodec,
-        customFormat: String? = null
+        customFormat: String? = null,
+        prependOwnershipPrefix: Boolean = true
     ): String {
         val template = customFormat ?: AppPreferences(context).getFileNameTemplate()
 
@@ -156,9 +158,32 @@ object RecordingFileNameFormatter {
             .replace(FileNamePlaceholder.PACKAGE_NAME.tag, packageName)
 
         AppLogger.v(TAG, "Formatted base filename: '$baseName' with template '$template'")
-        // Prepend the internal ownership prefix so this recording can be told apart from files
-        // created by other apps sharing the same SAF folder. The prefix is stripped before display.
-        return "$OWNED_FILE_PREFIX$baseName${codec.containerExtension}"
+        return composeRecordingFileName(baseName, codec.containerExtension, prependOwnershipPrefix)
+    }
+
+    /**
+     * Builds the final on-disk name. Extracted so unit tests can cover Honor-style names
+     * without needing an Android Context.
+     */
+    fun composeRecordingFileName(
+        baseName: String,
+        containerExtension: String,
+        prependOwnershipPrefix: Boolean
+    ): String {
+        val prefixed = if (prependOwnershipPrefix) "$OWNED_FILE_PREFIX$baseName" else baseName
+        return "$prefixed$containerExtension"
+    }
+
+    /**
+     * Returns true if [name] should appear in the in-app recordings library.
+     *
+     * When [ownershipPrefixRequired] is true, only files this app created (prefix or legacy
+     * default template) are listed. When false, any supported audio name is listed so OEM
+     * templates remain visible.
+     */
+    fun shouldListRecording(name: String, ownershipPrefixRequired: Boolean): Boolean {
+        if (!ownershipPrefixRequired) return true
+        return isOwnedRecording(name) || isLegacyRecording(name)
     }
 
     /**
