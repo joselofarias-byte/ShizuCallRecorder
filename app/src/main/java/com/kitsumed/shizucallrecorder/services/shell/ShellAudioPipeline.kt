@@ -149,6 +149,7 @@ class ShellAudioPipeline {
             return null
         }
 
+        var pipeReadEnd: ParcelFileDescriptor? = null
         try {
             AppLogger.i("Initialising the ShellService recording pipeline...")
 
@@ -164,7 +165,7 @@ class ShellAudioPipeline {
             // 2. Create Kernel pipe for Server ShellService --> App Process communication
             // We send readEnd to the app process and keep writeEnd here.
             val pipe = ParcelFileDescriptor.createPipe()
-            val pipeReadEnd  = pipe[0] // --> returned to app process
+            pipeReadEnd = pipe[0] // --> returned to app process
             val pipeWriteEnd = pipe[1] // --> written by ShellService relay coroutine
             audioWriteEnd = pipeWriteEnd
 
@@ -210,7 +211,23 @@ class ShellAudioPipeline {
             return pipeReadEnd // ← returned to RecordingForegroundService via Binder
         } catch (e: Exception) {
             AppLogger.e("Critical failure during pipeline startup: ${e.message}", e)
-            stopCapture() // Best-effort cleanup of any partially-allocated resources.
+            if (isRecordingActive.get()) {
+                stopCapture()
+            } else {
+                // stopCapture() ignores inactive sessions. A failure after creating the pipe
+                // or socket still owns those resources even though no process was launched.
+                runCatching { shellScope?.cancel() }
+                runCatching { clientConnection?.close() }
+                runCatching { serverSocket?.close() }
+                runCatching { audioWriteEnd?.close() }
+                clientConnection = null
+                serverSocket = null
+                audioWriteEnd = null
+                shellScope = null
+                audioPipeRelayJob = null
+            }
+            // The read end has not been handed to the app on the failure path.
+            runCatching { pipeReadEnd?.close() }
             return null
         }
 
