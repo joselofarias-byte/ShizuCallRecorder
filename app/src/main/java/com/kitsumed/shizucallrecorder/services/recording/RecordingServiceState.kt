@@ -24,6 +24,10 @@ sealed class RecordingServiceState {
     val isRecordingActive: Boolean
         get() = this is Active
 
+    /** True while a recording session is starting or already active. */
+    val isSessionInProgress: Boolean
+        get() = this is Starting || this is Active
+
     /** True if the recording service is actively recording a call and the recording is currently paused. */
     val isRecordingPaused: Boolean
         get() = (this as? Active)?.isPaused == true

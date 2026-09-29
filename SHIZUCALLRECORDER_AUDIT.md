@@ -261,6 +261,7 @@ Hypotheses for ELI-NX9 (all **device-only**):
 | B5 | Every file was prefixed `shizucall_`, so Honor CallRecord templates in `docs/troubleshooting.md` could not match, and disabling the prefix would also hide those files from the in-app library. | Settings toggle; `composeRecordingFileName`; library lists all audio files when prefix is off. |
 | B6 | No automated tests existed. | JUnit tests for number normalisation, filename ownership, call direction, scrcpy enums. |
 | B7 | `lintDebug` failed with 5 `NonObservableLocale` errors in Playback/Recordings composables (`Locale.getDefault()`). | Use `LocalLocale.current.platformLocale`. |
+| B8 | Duplicate START/STANDBY broadcasts could replace `Starting` or `Active`, allowing concurrent pipeline initialization or losing the active engine reference before cleanup. | Treat both `Starting` and `Active` as a session in progress; ignore duplicate START/STANDBY commands. |
 
 Non-bugs recorded so they are not “fixed” speculatively:
 
