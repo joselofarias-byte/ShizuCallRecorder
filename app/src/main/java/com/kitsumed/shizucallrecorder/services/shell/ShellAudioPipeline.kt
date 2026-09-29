@@ -244,7 +244,7 @@ class ShellAudioPipeline {
      *  5. Close the server socket.
      *  6. Close the pipe write-end LAST so scrcpy-server can write its final bytes first.
      */
-    fun stopCapture() {
+    fun stopCapture(skipRelayJoin: Boolean = false) {
         // compareAndSet(true, false): atomically checks that we ARE recording and clears the flag.
         // Returns false (and skips the body) if we were already stopped, preventing double-free.
         if (!isRecordingActive.compareAndSet(true, false)) {
@@ -263,13 +263,15 @@ class ShellAudioPipeline {
             AppLogger.w( "Interrupted while waiting for scrcpy-server exit: ${e.message}")
         }
 
-        // Wait for the relay job to copy remaining socket data to the pipe for downstream app (Time-bounded).
-        AppLogger.d("Waiting for relay coroutine to finish copying late bytes...")
-        runCatching {
-            runBlocking {
-                // Time-bounded wait to strictly prevent any infinite loop if EOF is never reached or take too long
-                withTimeoutOrNull(2000L) { // 2s timeout
-                    audioPipeRelayJob?.join()
+        // A stop triggered by the relay itself must not wait for that same job to finish.
+        // External stops still give the relay a bounded chance to flush late audio bytes.
+        if (!skipRelayJoin) {
+            AppLogger.d("Waiting for relay coroutine to finish copying late bytes...")
+            runCatching {
+                runBlocking {
+                    withTimeoutOrNull(2000L) {
+                        audioPipeRelayJob?.join()
+                    }
                 }
             }
         }
@@ -367,7 +369,7 @@ class ShellAudioPipeline {
                 // If we exit the relay (e.g. server crash), trigger a full stop so the app-side
                 // muxer finalises the file.
                 AppLogger.d("AudioRelayCoroutine finished")
-                stopCapture()
+                stopCapture(skipRelayJoin = true)
             }
         }
     }
