@@ -74,6 +74,7 @@ interface SettingsActions {
     fun setShizukuKeepAliveEnabled(enabled: Boolean)
     fun setShizukuAuthKey(key: String)
     fun setFileNameTemplate(template: String)
+    fun setFileNameOwnershipPrefixEnabled(enabled: Boolean)
     fun setCallDetectionMode(mode: CallDetectionMode)
     fun setRecordThirdPartyCalls(enabled: Boolean)
     fun setPostRecordingFileNotification(enabled: Boolean)
@@ -262,6 +263,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
      */
     override fun setFileNameTemplate(template: String) {
         preferences.setFileNameTemplate(template)
+        refresh()
+    }
+
+    override fun setFileNameOwnershipPrefixEnabled(enabled: Boolean) {
+        preferences.setFileNameOwnershipPrefixEnabled(enabled)
         refresh()
     }
 

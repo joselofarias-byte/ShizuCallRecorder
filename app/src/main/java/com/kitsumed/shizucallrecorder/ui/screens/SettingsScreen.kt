@@ -545,6 +545,7 @@ private fun RecordingSection(
     val callDetectionMode = remember(updateTrigger) { preferences.getCallDetectionMode() }
     val recordThirdPartyCalls = remember(updateTrigger) { preferences.isRecordThirdPartyCallsEnabled() }
     val fileNameFormat = remember(updateTrigger) { preferences.getFileNameTemplate() }
+    val fileNameOwnershipPrefixEnabled = remember(updateTrigger) { preferences.isFileNameOwnershipPrefixEnabled() }
     val postRecordingFileNotifications = remember(updateTrigger) { preferences.isPostRecordingFileActionsNotificationEnabled() }
     val isVibrationEnabled = remember(updateTrigger) { preferences.isVibrationEnabled() }
     val autoRecordIncoming = remember(updateTrigger) { preferences.isAutoRecordIncomingEnabled() }
@@ -650,6 +651,13 @@ private fun RecordingSection(
                 )
             },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+        )
+
+        ToggleListItem(
+            label = stringResource(R.string.settings_filename_ownership_prefix),
+            description = stringResource(R.string.settings_filename_ownership_prefix_description),
+            checked = fileNameOwnershipPrefixEnabled,
+            onCheckedChange = { actions.setFileNameOwnershipPrefixEnabled(it) }
         )
 
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp)
@@ -1235,6 +1243,7 @@ private fun SettingsScreenPreview() {
             override fun setShizukuKeepAliveEnabled(enabled: Boolean) {}
             override fun setShizukuAuthKey(key: String) {}
             override fun setFileNameTemplate(template: String) {}
+            override fun setFileNameOwnershipPrefixEnabled(enabled: Boolean) {}
             override fun setCallDetectionMode(mode: CallDetectionMode) {}
             override fun setRecordThirdPartyCalls(enabled: Boolean) {}
             override fun setPostRecordingFileNotification(enabled: Boolean) {}

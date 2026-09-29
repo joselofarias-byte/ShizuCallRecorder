@@ -102,16 +102,14 @@ class RecordingsViewModel(application: Application) : AndroidViewModel(applicati
                     // same SAF folder. New recordings carry the "shizucall_" ownership prefix.
                     // Legacy recordings (created before the prefix existed) are included alongside
                     // owned ones so the user never loses access to older recordings.
+                    val ownershipPrefixRequired = preferences.isFileNameOwnershipPrefixEnabled()
                     val sourceFiles = folder
                         .listFiles()
                         .asSequence()
                         .filter { file -> file.isFile && file.isSupportedAudioFile() }
                         .filter { file ->
-                            // Parentheses are required: without them, `||` would evaluate
-                            // isLegacyRecording() even when file.name is null, causing a NPE.
                             file.name?.let { name ->
-                                RecordingFileNameFormatter.isOwnedRecording(name) ||
-                                    RecordingFileNameFormatter.isLegacyRecording(name)
+                                RecordingFileNameFormatter.shouldListRecording(name, ownershipPrefixRequired)
                             } ?: false
                         }
                         .toList()

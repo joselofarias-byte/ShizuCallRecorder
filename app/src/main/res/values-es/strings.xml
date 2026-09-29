@@ -139,6 +139,8 @@
     <string name="recording_shizuku_auth_key_missing">Falta la clave de autenticación de Shizuku Intents. Introdúcela en los ajustes de la aplicación.</string>
     <string name="general_reset">Restablecer</string>
     <string name="settings_file_name_template">Plantilla de nombre de archivo</string>
+    <string name="settings_filename_ownership_prefix">Anteponer shizucall_ a las grabaciones</string>
+    <string name="settings_filename_ownership_prefix_description">Ayuda a la biblioteca a ignorar archivos de otras apps en una carpeta compartida. Desactívelo para los nombres CallRecord de Honor/MagicOS que deben coincidir exactamente con el marcador. Si está desactivado, la biblioteca lista todos los archivos de audio de la carpeta.</string>
     <string name="settings_file_name_template_placeholders">Marcadores de posición para %s:</string>
     <string name="settings_file_name_template_placeholders_preview">Vista previa: %1$s</string>
     <string name="placeholder_date_desc">La fecha y hora actuales</string>

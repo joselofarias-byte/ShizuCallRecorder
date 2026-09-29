@@ -162,8 +162,8 @@ class RecordingForegroundService : Service() {
 
         when (action) {
             ACTION_START_RECORDING, ACTION_MANUAL_START -> {
-                if (state.isRecordingActive) {
-                    AppLogger.w( "Start request ignored. A session is already on-going.")
+                if (state.isSessionInProgress) {
+                    AppLogger.w( "Start request ignored. A session is already starting or active.")
                     return START_NOT_STICKY
                 }
 
@@ -182,8 +182,12 @@ class RecordingForegroundService : Service() {
 
                 serviceScope.launch {
                     try {
-                        // Wait for Shizuku server to be available
-                        ShizukuConnectionManager.waitForServer()
+                        // Wait for Shizuku server to be available. waitForServer() returns false on
+                        // timeout; do not bind in that case or the error becomes "Shizuku is not running".
+                        val serverReady = ShizukuConnectionManager.waitForServer()
+                        if (!serverReady) {
+                            throw IllegalStateException("Timed out waiting for Shizuku server")
+                        }
                         val service = shizukuManager.getShellService()
                         shellService = service // update local ref
                         startNewRecordingSession(service, currentMeta)
@@ -212,6 +216,10 @@ class RecordingForegroundService : Service() {
             }
 
             ACTION_STANDBY -> {
+                if (state.isSessionInProgress) {
+                    AppLogger.w( "Standby request ignored. A recording session is already starting or active.")
+                    return START_NOT_STICKY
+                }
                 _serviceState.update { RecordingServiceState.Standby(currentMeta) }
                 serviceScope.launch {
                     // If enabled in the user preferences, we try to start the Shizuku server as early as possible (in the standby state, RINGING/OUTGOING),

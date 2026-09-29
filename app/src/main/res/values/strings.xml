@@ -190,6 +190,8 @@
     <string name="settings_recording_folder_label">Recording Folder</string>
 
     <string name="settings_file_name_template">File Name Template</string>
+    <string name="settings_filename_ownership_prefix">Prefix recordings with shizucall_</string>
+    <string name="settings_filename_ownership_prefix_description">Helps the in-app library ignore other apps\' files in a shared folder. Disable for Honor/MagicOS CallRecord names that must match the dialer exactly. When disabled, the library lists every audio file in the recording folder.</string>
     <string name="settings_file_name_template_placeholders">Placeholders for %s :</string>
     <string name="settings_file_name_template_placeholders_preview">Preview: %1$s</string>
     <string name="placeholder_date_desc">The current date and time</string>

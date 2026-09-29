@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -99,6 +100,7 @@ fun PlaybackScreen(
 ) {
     val recordingsViewModel: RecordingsViewModel = viewModel()
     val context = LocalContext.current
+    val locale = LocalLocale.current.platformLocale
     val isPlaying by viewModel.isPlaying.collectAsState()
     val position by viewModel.currentPosition.collectAsState()
     val duration by viewModel.duration.collectAsState()
@@ -122,7 +124,7 @@ fun PlaybackScreen(
     val title = recording.contactName ?: recording.phoneNumber
     val subtitle = recording.contactName?.let { recording.phoneNumber }.orEmpty()
     val dateText = recording.date?.let {
-        SimpleDateFormat("dd MMMM yyyy  -  hh:mm a", Locale.getDefault()).format(it)
+        SimpleDateFormat("dd MMMM yyyy  -  hh:mm a", locale).format(it)
     }.orEmpty()
     val isIncoming = recording.direction == "in"
     val accentColor = if (isIncoming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary

@@ -38,6 +38,11 @@ jobs:
           cache-provider: basic
           cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
 
+      - name: Run debug unit tests
+        env:
+          SKIP_SIGNING: 'true'
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
       - name: Assemble debug APK
         env:
           SKIP_SIGNING: 'true'

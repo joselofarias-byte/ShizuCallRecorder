@@ -149,6 +149,7 @@ class ShellAudioPipeline {
             return null
         }
 
+        var pipeReadEnd: ParcelFileDescriptor? = null
         try {
             AppLogger.i("Initialising the ShellService recording pipeline...")
 
@@ -164,7 +165,7 @@ class ShellAudioPipeline {
             // 2. Create Kernel pipe for Server ShellService --> App Process communication
             // We send readEnd to the app process and keep writeEnd here.
             val pipe = ParcelFileDescriptor.createPipe()
-            val pipeReadEnd  = pipe[0] // --> returned to app process
+            pipeReadEnd = pipe[0] // --> returned to app process
             val pipeWriteEnd = pipe[1] // --> written by ShellService relay coroutine
             audioWriteEnd = pipeWriteEnd
 
@@ -210,7 +211,23 @@ class ShellAudioPipeline {
             return pipeReadEnd // ← returned to RecordingForegroundService via Binder
         } catch (e: Exception) {
             AppLogger.e("Critical failure during pipeline startup: ${e.message}", e)
-            stopCapture() // Best-effort cleanup of any partially-allocated resources.
+            if (isRecordingActive.get()) {
+                stopCapture()
+            } else {
+                // stopCapture() ignores inactive sessions. A failure after creating the pipe
+                // or socket still owns those resources even though no process was launched.
+                runCatching { shellScope?.cancel() }
+                runCatching { clientConnection?.close() }
+                runCatching { serverSocket?.close() }
+                runCatching { audioWriteEnd?.close() }
+                clientConnection = null
+                serverSocket = null
+                audioWriteEnd = null
+                shellScope = null
+                audioPipeRelayJob = null
+            }
+            // The read end has not been handed to the app on the failure path.
+            runCatching { pipeReadEnd?.close() }
             return null
         }
 
@@ -227,7 +244,7 @@ class ShellAudioPipeline {
      *  5. Close the server socket.
      *  6. Close the pipe write-end LAST so scrcpy-server can write its final bytes first.
      */
-    fun stopCapture() {
+    fun stopCapture(skipRelayJoin: Boolean = false) {
         // compareAndSet(true, false): atomically checks that we ARE recording and clears the flag.
         // Returns false (and skips the body) if we were already stopped, preventing double-free.
         if (!isRecordingActive.compareAndSet(true, false)) {
@@ -246,13 +263,15 @@ class ShellAudioPipeline {
             AppLogger.w( "Interrupted while waiting for scrcpy-server exit: ${e.message}")
         }
 
-        // Wait for the relay job to copy remaining socket data to the pipe for downstream app (Time-bounded).
-        AppLogger.d("Waiting for relay coroutine to finish copying late bytes...")
-        runCatching {
-            runBlocking {
-                // Time-bounded wait to strictly prevent any infinite loop if EOF is never reached or take too long
-                withTimeoutOrNull(2000L) { // 2s timeout
-                    audioPipeRelayJob?.join()
+        // A stop triggered by the relay itself must not wait for that same job to finish.
+        // External stops still give the relay a bounded chance to flush late audio bytes.
+        if (!skipRelayJoin) {
+            AppLogger.d("Waiting for relay coroutine to finish copying late bytes...")
+            runCatching {
+                runBlocking {
+                    withTimeoutOrNull(2000L) {
+                        audioPipeRelayJob?.join()
+                    }
                 }
             }
         }
@@ -350,7 +369,7 @@ class ShellAudioPipeline {
                 // If we exit the relay (e.g. server crash), trigger a full stop so the app-side
                 // muxer finalises the file.
                 AppLogger.d("AudioRelayCoroutine finished")
-                stopCapture()
+                stopCapture(skipRelayJoin = true)
             }
         }
     }

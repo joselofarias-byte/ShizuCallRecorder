@@ -235,6 +235,19 @@ class PhoneStateSessionManager private constructor(context: Context) {
             }
         }
 
+        // ponytail: start FGS/Shizuku on RINGING, not only OFFHOOK.
+        // Onboarding already requires battery exemption, which is an official Android 12+
+        // FGS background-start exemption. Do not set wasRecordingServiceStartIntentSend so
+        // OFFHOOK can still start recording.
+        if (state == TelephonyManager.CALL_STATE_RINGING) {
+            val ringingMetadata = session.currentMetadata
+            if (ringingMetadata != null && !session.wasRecordingServiceStartIntentSend) {
+                withContext(Dispatchers.Main) {
+                    RecordingDecisionEngine.getInstance(appContext).enterStandby(ringingMetadata)
+                }
+            }
+        }
+
         // 4. Handle OFFHOOK (now in a call) + The Verification Window (Non-blocking delay)
         if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
             // Handle anonymous and blank numbers (due to double broadcast behavior with one having no number)

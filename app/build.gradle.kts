@@ -181,6 +181,9 @@ android {
         sourceCompatibility =  JavaVersion.VERSION_17
         targetCompatibility =  JavaVersion.VERSION_17
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     buildFeatures {
         compose = true
         aidl = true
@@ -299,4 +302,6 @@ dependencies {
     // Shizuku
     implementation(libs.shizukuApi)
     implementation(libs.shizukuProvider)
+
+    testImplementation(libs.junit)
 }

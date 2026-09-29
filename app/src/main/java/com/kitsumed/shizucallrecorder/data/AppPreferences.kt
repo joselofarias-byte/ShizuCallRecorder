@@ -73,6 +73,7 @@ class AppPreferences(context: Context) {
 
         // --- File Naming ---
         const val FILE_NAME_TEMPLATE = "{date}_{direction}_{phone_number}"
+        const val FILE_NAME_OWNERSHIP_PREFIX_ENABLED = true
 
         // --- UI & Appearance ---
         val THEME_MODE = ThemeMode.SYSTEM
@@ -121,6 +122,7 @@ class AppPreferences(context: Context) {
         AUDIO_CODEC("audio_codec"),
         AUDIO_BITRATE("audio_bitrate"),
         FILE_NAME_TEMPLATE("file_name_template"),
+        FILE_NAME_OWNERSHIP_PREFIX_ENABLED("file_name_ownership_prefix_enabled"),
         THEME_MODE("theme_mode"),
         DYNAMIC_COLOR("dynamic_color"),
         SHOW_TOASTS("show_toasts"),
@@ -404,6 +406,15 @@ class AppPreferences(context: Context) {
 
     /** Sets the user configured file name template. */
     fun setFileNameTemplate(template: String) = setString(Key.FILE_NAME_TEMPLATE, template)
+
+    /**
+     * When true, new recordings are prefixed with [com.kitsumed.shizucallrecorder.utils.RecordingFileNameFormatter.OWNED_FILE_PREFIX]
+     * so the in-app library can distinguish them from other apps sharing the same folder.
+     * Disable for OEM folder conventions (e.g. Honor MagicOS `/Sounds/CallRecord/`) that match on exact names.
+     */
+    fun isFileNameOwnershipPrefixEnabled() = getBoolean(Key.FILE_NAME_OWNERSHIP_PREFIX_ENABLED, DefaultsValue.FILE_NAME_OWNERSHIP_PREFIX_ENABLED)
+
+    fun setFileNameOwnershipPrefixEnabled(enabled: Boolean) = setBoolean(Key.FILE_NAME_OWNERSHIP_PREFIX_ENABLED, enabled)
 
     // -------- UI & Appearance --------
 

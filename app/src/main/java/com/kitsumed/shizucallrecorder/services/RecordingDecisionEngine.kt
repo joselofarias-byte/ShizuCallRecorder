@@ -91,6 +91,18 @@ class RecordingDecisionEngine private constructor(context: Context) {
     }
 
     /**
+     * Brings [RecordingForegroundService] into standby without starting capture.
+     *
+     * Used on RINGING/DIALING so the foreground service (and optionally Shizuku) can start
+     * before the call becomes ACTIVE/OFFHOOK. Does not evaluate auto-record rules.
+     */
+    suspend fun enterStandby(rawData: RawCallData): Boolean {
+        AppLogger.i( "Entering recording standby for ${rawData.direction} call")
+        val enrichedData = EnrichedCallData.enrichMetadata(appContext, rawData)
+        return fireRecordingServiceIntent(enrichedData, shouldAutoRecord = false)
+    }
+
+    /**
      * Ends the current recording session, firing the STOP intent to [com.kitsumed.shizucallrecorder.services.recording.RecordingForegroundService].
      */
     fun endRecordingSession() {

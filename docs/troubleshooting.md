@@ -42,6 +42,8 @@ You can also look for existing discussions or issues on this project to see if o
 
 While we do not and will not offer pre-defined templates for specific apps, we provide the ability to customize your filename format by including multiple details like the hour, contact name, or, when available, the name of the application that made the call.
 
+Honor/MagicOS CallRecord matching requires disabling **Prefix recordings with shizucall_** in Settings. That prefix is on by default so the in-app library can ignore other apps' files in a shared folder. Honor's dialer is reported to match exact names in `/storage/emulated/0/Sounds/CallRecord/`; a `shizucall_` prefix would prevent that match. This does **not** enable Honor's native recorder.
+
 <details>
 <summary><b>See the list of templates reported to work on native phone applications by users</b></summary>
 

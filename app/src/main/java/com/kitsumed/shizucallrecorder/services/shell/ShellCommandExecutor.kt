@@ -9,8 +9,15 @@
 package com.kitsumed.shizucallrecorder.services.shell
 
 import com.kitsumed.shizucallrecorder.utils.AppLogger
+import java.util.concurrent.TimeUnit
 
 class ShellCommandExecutor {
+    companion object {
+        // ponytail: fixed timeout is enough for appops/role commands.
+        // switch to per-command budgets if OEM shells start hanging past 15s.
+        const val DEFAULT_TIMEOUT_MS = 15_000L
+    }
+
     /**
      * Grants an AppOp permission at the package level for a specific user profile.
      *
@@ -58,16 +65,39 @@ class ShellCommandExecutor {
      * Executes a shell command and returns true if the command was successful (exit code 0) and there was no error output.
      * Logs the command, exit code, output, and error output for debugging purposes.
      *
+     * Streams are drained concurrently before waiting so a full pipe buffer cannot deadlock
+     * [Process.waitFor]. The wait is time-bounded.
+     *
      * @param command The shell command to execute as a vararg of strings.
      * @return True if the command was successful, false otherwise.
      */
-    private fun execute(vararg command: String): Boolean {
+    internal fun execute(vararg command: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): Boolean {
         return try {
             AppLogger.i( "Executing command: ${command.joinToString(" ")}")
             val process = ProcessBuilder(*command).start()
-            val exitCode = process.waitFor()
-            val inputOutput = process.inputStream.bufferedReader().readText().trim()
-            val errorOutput = process.errorStream.bufferedReader().readText().trim()
+            val stdout = StringBuilder()
+            val stderr = StringBuilder()
+            val stdoutThread = Thread {
+                runCatching { stdout.append(process.inputStream.bufferedReader().readText()) }
+            }.apply { isDaemon = true; start() }
+            val stderrThread = Thread {
+                runCatching { stderr.append(process.errorStream.bufferedReader().readText()) }
+            }.apply { isDaemon = true; start() }
+
+            val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                stdoutThread.join(1_000)
+                stderrThread.join(1_000)
+                AppLogger.e( "Command timed out after ${timeoutMs}ms: ${command.joinToString(" ")}")
+                return false
+            }
+
+            stdoutThread.join(1_000)
+            stderrThread.join(1_000)
+            val exitCode = process.exitValue()
+            val inputOutput = stdout.toString().trim()
+            val errorOutput = stderr.toString().trim()
 
             if (exitCode == 0 && errorOutput.isEmpty()) {
                 AppLogger.i( "Command executed successfully. Output: ${inputOutput.ifBlank { "Empty Output" }}")
